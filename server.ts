@@ -17,7 +17,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3333;
+
+function getPort(): number {
+  const portArg = process.argv[2];
+  if (portArg && !isNaN(Number(portArg))) {
+    return Number(portArg);
+  }
+  return 3333;
+}
+
+const PORT = process.env.PORT || getPort();
 
 // Important: Serve the dist directory directly
 app.use(express.static(__dirname));
@@ -107,6 +116,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+
+  if(0 === clients.size){
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `Have you opened your web browser?. Please go to http://localhost:${getPort()}, enable your Webcam and try again.`,
+        },
+      ],
+    }
+  }
+
   const clientId = Array.from(clients.keys())[0];
 
   if (!clientId) {

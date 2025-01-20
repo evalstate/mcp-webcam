@@ -1,21 +1,68 @@
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function WebcamCapture() {
-  const webcamRef = useRef<Webcam>(null);
+  const [webcamInstance, setWebcamInstance] = useState<Webcam | null>(null);
   const clientIdRef = useRef<string | null>(null);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  // We can keep the state for UI purposes if needed
   const [_, setClientId] = useState<string | null>(null);
 
-  const capture = useCallback(() => {
-    if (webcamRef.current) {
-      const imageSrc = webcamRef.current.getScreenshot();
-      setCapturedImage(imageSrc);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>("default");
+  const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
+
+  const getImage = useCallback(() => {
+    console.log('getImage called, frozenFrame state:', frozenFrame);
+    if (frozenFrame) {
+      console.log('Using frozen frame');
+      return frozenFrame;
     }
-  }, [webcamRef]); // Removed clientId from dependencies since it's not used
+    console.log('Getting live screenshot');
+    const screenshot = webcamInstance?.getScreenshot();
+    return screenshot || null;
+  }, [frozenFrame, webcamInstance]);
+
+  const toggleFreeze = () => {
+    console.log('toggleFreeze called, current frozenFrame:', frozenFrame);
+    if (frozenFrame) {
+      console.log('Unfreezing frame');
+      setFrozenFrame(null);
+    } else if (webcamInstance) {
+      console.log('Freezing new frame');
+      const screenshot = webcamInstance.getScreenshot();
+      if (screenshot) {
+        console.log('New frame captured successfully');
+        setFrozenFrame(screenshot);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setDevices(videoDevices);
+        setSelectedDevice("default");
+      } catch (error) {
+        console.error("Error getting devices:", error);
+      }
+    };
+
+    getDevices();
+    navigator.mediaDevices.addEventListener('devicechange', getDevices);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', getDevices);
+    };
+  }, []);
 
   useEffect(() => {
     console.error("Setting up EventSource...");
@@ -44,14 +91,22 @@ export function WebcamCapture() {
             break;
 
           case "capture":
-            console.log(`capture ${clientIdRef.current} -- ${webcamRef.current}`);
-            if (!webcamRef.current || !clientIdRef.current) {
-              console.error("Cannot capture - webcam or clientId not ready");
+            console.log(`Capture triggered - webcam status:`, !!webcamInstance);
+            if (!webcamInstance) {
+              console.error("Cannot capture - webcam not initialized");
+              return;
+            }
+            if (!clientIdRef.current) {
+              console.error("Cannot capture - client ID not set");
               return;
             }
 
-            console.log("Capture command received");
-            const imageSrc = webcamRef.current.getScreenshot();
+            console.log("Taking screenshot...");
+            const imageSrc = getImage();
+            if (!imageSrc) {
+              console.error("Failed to get image");
+              return;
+            }
             await fetch("/api/capture-result", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -80,55 +135,68 @@ export function WebcamCapture() {
       console.error("Cleaning up EventSource connection");
       eventSource.close();
     };
-  }, []); // Empty dependency array is fine now as we're using refs
+  }, [webcamInstance, getImage]); // Add getImage to dependencies
 
   return (
     <div className="container mx-auto p-4">
       <Card className="max-w-2xl mx-auto">
-        <CardContent className="p-4">
-          {!capturedImage ? (
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Camera Capture</CardTitle>
+          <div className="w-full max-w-xs mx-auto mt-4">
+            <Select
+              value={selectedDevice}
+              onValueChange={setSelectedDevice}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select camera" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default camera</SelectItem>
+                {devices.map((device) => (
+                  <SelectItem key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="rounded-lg overflow-hidden border border-border relative">
             <Webcam
-              ref={webcamRef}
+              ref={(webcam) => setWebcamInstance(webcam)}
               screenshotFormat="image/jpeg"
-              className="w-full rounded-lg"
+              className="w-full"
               videoConstraints={{
                 width: 1280,
                 height: 720,
-                facingMode: "user",
+                ...(selectedDevice !== "default" ? { deviceId: selectedDevice } : { facingMode: "user" })
               }}
             />
-          ) : (
-            <img
-              src={capturedImage}
-              alt="Captured"
-              className="w-full rounded-lg"
-            />
-          )}
+            {frozenFrame && (
+              <img
+                src={frozenFrame}
+                alt="Frozen frame"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
+            {frozenFrame && (
+              <div className="absolute top-4 right-4">
+                <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm">
+                  Frozen
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
-        <CardFooter className="flex justify-center gap-4">
-          {!capturedImage ? (
-            <Button onClick={capture}>Capture</Button>
-          ) : (
-            <>
-              <Button
-                onClick={() => setCapturedImage(null)}
-                variant="secondary"
-              >
-                Retake
-              </Button>
-              <Button
-                onClick={() => {
-                  // Download logic
-                  const link = document.createElement("a");
-                  link.href = capturedImage;
-                  link.download = "captured-image.jpg";
-                  link.click();
-                }}
-              >
-                Save
-              </Button>
-            </>
-          )}
+        <CardFooter className="flex justify-center gap-4 pb-6">
+          <Button
+            onClick={toggleFreeze}
+            variant={frozenFrame ? "destructive" : "outline"}
+            size="lg"
+          >
+            {frozenFrame ? "Unfreeze" : "Freeze"}
+          </Button>
         </CardFooter>
       </Card>
     </div>
