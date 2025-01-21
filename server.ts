@@ -5,7 +5,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   ToolSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -112,6 +114,7 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
     },
   }
 );
@@ -143,7 +146,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `Have you opened your web browser?. Please go to http://localhost:${getPort()}, enable your Webcam and try again.`,
+          text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, enable your Webcam and try again.`,
         },
       ],
     };
@@ -197,6 +200,59 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         mimeType: mimeType,
       },
     ],
+  };
+});
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  if(clients.size===0) return {resources:[]};
+
+  return {
+    resources: [
+      {
+        uri:"webcam://current",
+        name: "Current view from the Webcam",
+        mimeType:"image/jpeg" // probably :) 
+      }
+    ]
+  }
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  // Check if we have any connected clients
+  if (0 === clients.size) {
+    throw new Error(`No clients connected. Please visit http://localhost:${getPort()} and enable your Webcam.`);
+  }
+
+  // Validate URI
+  if (request.params.uri !== "webcam://current") {
+    throw new Error("Invalid resource URI. Only webcam://current is supported.");
+  }
+
+  const clientId = Array.from(clients.keys())[0];
+  
+  // Capture image
+  const result = await new Promise<string | { error: string }>((resolve) => {
+    captureCallbacks.set(clientId, resolve);
+    clients.get(clientId)?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
+  });
+
+  // Handle error case
+  if (typeof result === 'object' && 'error' in result) {
+    throw new Error(`Failed to capture image: ${result.error}`);
+  }
+
+  // Parse the data URL
+  const { mimeType, base64Data } = parseDataUrl(result);
+
+  // Return in the blob format
+  return {
+    contents: [
+      {
+        uri: request.params.uri,
+        mimeType,
+        blob: base64Data
+      }
+    ]
   };
 });
 

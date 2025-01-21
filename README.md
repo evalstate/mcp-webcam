@@ -1,24 +1,26 @@
 # mcp-webcam
 
-Use your Webcam to send live images to Claude Desktop (or other MCP Client). 
+Use your Webcam to send live images to Claude Desktop (or other MCP Client).  
 
-Also contains Assistant driven screenshots (user intervention required).
+Provides `"capture"` and `"screenshot"` tools to allow Claude to take a frame from the webcam or initiate taking a screenshot.
+
+Provides a `current view from the webcam` resource too.
 
 ## Installation
 
-Package is @llmindset/mcp-webcam. Entry point is /dist/server.ts
+NPM Package is `@llmindset/mcp-webcam`.
 
 Will add Smithery instructions once package published and tested by myself.
 
 Takes a single argument to set the Port for the embedded Express server. 
 
-Default port is 3333 (to avoid conflict if using with Inspector).
+Default port is `3333` (to avoid conflict if using with Inspector).
 
 Also need to test on Mac OS (my webcam is broken).
 
 ## Usage
 
-Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding`. You can "freeze" the current image and that will be returned to Claude rather than a live capture.
+Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding` or `what colour top am i wearing?`. You can "freeze" the current image and that will be returned to Claude rather than a live capture. 
 
 You can ask for Screenshots - navigate to the browser so that you can guide the capture area when the request comes in. Screenshots are automatically resized to be manageable for Claude (useful if you have a 4K Screen). The button is there to allow testing of your platform specific Screenshot UX - it doesn't do anything other than prepare you for a Claude intiated request.
 
