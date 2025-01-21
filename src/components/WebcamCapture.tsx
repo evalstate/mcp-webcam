@@ -9,6 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { captureScreen } from "@/utils/screenCapture";
+import { toast } from "sonner"; // Add this import if you're using sonner, or use your preferred toast library
 
 export function WebcamCapture() {
   const [webcamInstance, setWebcamInstance] = useState<Webcam | null>(null);
@@ -18,6 +20,7 @@ export function WebcamCapture() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
+  const [isCapturingScreen, setIsCapturingScreen] = useState(false);
 
   const getImage = useCallback(() => {
     console.log('getImage called, frozenFrame state:', frozenFrame);
@@ -42,6 +45,38 @@ export function WebcamCapture() {
         console.log('New frame captured successfully');
         setFrozenFrame(screenshot);
       }
+    }
+  };
+
+  const handleScreenCapture = async () => {
+    console.log('Screen capture button clicked');
+    try {
+      const screenImage = await captureScreen();
+      console.log('Got screen image, length:', screenImage.length);
+      
+      // Test if we can even get this far
+      alert('Screen captured! Check console for details.');
+      
+      if (!clientIdRef.current) {
+        console.error('No client ID available');
+        return;
+      }
+
+      const response = await fetch("/api/capture-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: clientIdRef.current,
+          image: screenImage,
+          type: "screen"
+        }),
+      });
+      
+      console.log('Server response:', response.status);
+      
+    } catch (error) {
+      console.error("Screen capture error:", error);
+      alert('Screen capture failed: ' + (error as Error).message);
     }
   };
 
@@ -116,6 +151,29 @@ export function WebcamCapture() {
               }),
             });
             console.log("Image sent to server");
+            break;
+
+          case "captureScreen":
+            console.log("Screen capture triggered");
+            if (!clientIdRef.current) {
+              console.error("Cannot capture - client ID not set");
+              return;
+            }
+            try {
+              const screenImage = await captureScreen();
+              await fetch("/api/capture-result", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  clientId: clientIdRef.current,
+                  image: screenImage,
+                  type: "screen"
+                }),
+              });
+              console.log("Screen capture sent to server");
+            } catch (error) {
+              console.error("Screen capture failed:", error);
+            }
             break;
 
           default:
@@ -196,6 +254,13 @@ export function WebcamCapture() {
             size="lg"
           >
             {frozenFrame ? "Unfreeze" : "Freeze"}
+          </Button>
+          <Button
+            onClick={handleScreenCapture}
+            variant="secondary"
+            size="lg"
+          >
+            Capture Screen
           </Button>
         </CardFooter>
       </Card>
