@@ -26,6 +26,10 @@ You can ask for Screenshots - navigate to the browser so that you can guide the 
 
 ## Other notes
 
-That's it really. This is a demonstration of supplying Resources to Claude's context via an MCP Server UI. This project might prove useful if you want to build a local, interactive MCP Server.
+That's it really. 
+
+This MCP Server was built to demonstrate exposing a User Interface on an MCP Server, and serving live resources back to Claude Desktop.
+
+This project might prove useful if you want to build a local, interactive MCP Server.
 
 Please read the article at https://llmindset.co.uk/posts/2025/01/resouce-handling-mcp for more details about handling files and resources in LLM / MCP Chat Applications.
