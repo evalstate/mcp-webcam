@@ -8,17 +8,19 @@ Also contains Assistant driven screenshots (user intervention required).
 
 Package is @llmindset/mcp-webcam. Entry point is /dist/server.ts
 
-Takes a single argument to set the Port for the embedded Express server. Default is 3333 (so it doesn't conflict with Inspector).
+Will add Smithery instructions once package published and tested by myself.
 
-TBC - will add Smithery instructions once package published and tested by myself.
+Takes a single argument to set the Port for the embedded Express server. 
+
+Default port is 3333 (to avoid conflict if using with Inspector).
 
 Also need to test on Mac OS (my webcam is broken).
 
 ## Usage
 
-Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding`.
+Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding`. You can "freeze" the current image and that will be returned to Claude rather than a live capture.
 
-You can ask for Screenshots - navigate to the browser so that you can guide the capture area when the request comes in. Screenshots are automatically resized to be manageable for Claude (useful if you have a 4K Screen).
+You can ask for Screenshots - navigate to the browser so that you can guide the capture area when the request comes in. Screenshots are automatically resized to be manageable for Claude (useful if you have a 4K Screen). The button is there to allow testing of your platform specific Screenshot UX - it doesn't do anything other than prepare you for a Claude intiated request.
 
 ## Other notes
 

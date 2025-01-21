@@ -121,7 +121,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "capture",
-        description: "Gets the latest picture from the webcam.",
+        description: "Gets the latest picture from the webcam. You can use this "
+        +" if the human asks questions about their immediate environment,  " +
+        "if you want to see the human or to examine an object they may be " + 
+        "referring to or showing you.",
         inputSchema: { type: "object", parameters: {} } as ToolInput,
       },
       {
