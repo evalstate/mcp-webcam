@@ -1,6 +1,6 @@
 {
   "name": "@llmindset/mcp-webcam",
-  "version": "0.0.1",
+  "version": "0.0.6",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -8,12 +8,27 @@
   "bin": {
     "mcp-webcam": "./dist/server.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evalstate/mcp-webcam.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/evalstate/mcp-webcam/issues"
+  },
+  "homepage": "https://github.com/evalstate/mcp-webcam#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
     "start": "node dist/server.js",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build",
+    "postbuild": "node -e \"process.platform !== 'win32' && require('child_process').execSync('chmod +x dist/server.js')\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.3.0",

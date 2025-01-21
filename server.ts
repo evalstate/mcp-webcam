@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -5,7 +7,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   ToolSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -37,7 +41,10 @@ app.get("/api/health", (_, res) => {
 });
 
 // Store clients with their resolve functions
-let captureCallbacks = new Map<string, (response: string | { error: string }) => void>();
+let captureCallbacks = new Map<
+  string,
+  (response: string | { error: string }) => void
+>();
 
 app.get("/api/events", (req, res) => {
   console.error("New SSE connection request");
@@ -107,11 +114,12 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 const server = new Server(
   {
     name: "mcp-capture",
-    version: "0.0.1",
+    version: "0.0.6",
   },
   {
     capabilities: {
       tools: {},
+      resources: {},
     },
   }
 );
@@ -121,7 +129,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "capture",
-        description: "Gets the latest picture from the webcam.",
+        description:
+          "Gets the latest picture from the webcam. You can use this " +
+          " if the human asks questions about their immediate environment,  " +
+          "if you want to see the human or to examine an object they may be " +
+          "referring to or showing you.",
         inputSchema: { type: "object", parameters: {} } as ToolInput,
       },
       {
@@ -140,7 +152,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `Have you opened your web browser?. Please go to http://localhost:${getPort()}, enable your Webcam and try again.`,
+          text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, enable your Webcam and try again.`,
         },
       ],
     };
@@ -163,7 +175,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   });
 
   // Handle error case
-  if (typeof result === 'object' && 'error' in result) {
+  if (typeof result === "object" && "error" in result) {
     return {
       isError: true,
       content: [
@@ -197,6 +209,65 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   };
 });
 
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  if (clients.size === 0) return { resources: [] };
+
+  return {
+    resources: [
+      {
+        uri: "webcam://current",
+        name: "Current view from the Webcam",
+        mimeType: "image/jpeg", // probably :)
+      },
+    ],
+  };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  // Check if we have any connected clients
+  if (0 === clients.size) {
+    throw new Error(
+      `No clients connected. Please visit http://localhost:${getPort()} and enable your Webcam.`
+    );
+  }
+
+  // Validate URI
+  if (request.params.uri !== "webcam://current") {
+    throw new Error(
+      "Invalid resource URI. Only webcam://current is supported."
+    );
+  }
+
+  const clientId = Array.from(clients.keys())[0];
+
+  // Capture image
+  const result = await new Promise<string | { error: string }>((resolve) => {
+    captureCallbacks.set(clientId, resolve);
+    clients
+      .get(clientId)
+      ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
+  });
+
+  // Handle error case
+  if (typeof result === "object" && "error" in result) {
+    throw new Error(`Failed to capture image: ${result.error}`);
+  }
+
+  // Parse the data URL
+  const { mimeType, base64Data } = parseDataUrl(result);
+
+  // Return in the blob format
+  return {
+    contents: [
+      {
+        uri: request.params.uri,
+        mimeType,
+        blob: base64Data,
+      },
+    ],
+  };
+});
+
 interface ParsedDataUrl {
   mimeType: string;
   base64Data: string;
@@ -215,6 +286,12 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 
 async function main() {
   const transport = new StdioServerTransport();
+
+  // Handle transport closure
+  transport.onclose = () => {
+    console.log("Transport closed, shutting down...");
+    process.exit(0);
+  };
   await server.connect(transport);
 }
 
