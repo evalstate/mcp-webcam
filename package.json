@@ -1,6 +1,6 @@
 {
   "name": "@llmindset/mcp-webcam",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -8,6 +8,9 @@
   "bin": {
     "mcp-webcam": "./dist/server.js"
   },
+  "files": 
+    ["dist"]
+  ,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/evalstate/mcp-webcam.git"
