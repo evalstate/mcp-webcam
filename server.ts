@@ -289,7 +289,7 @@ async function main() {
 
   // Handle transport closure
   transport.onclose = () => {
-    console.log("Transport closed, shutting down...");
+    console.error("Transport closed, shutting down...");
     process.exit(0);
   };
   await server.connect(transport);
