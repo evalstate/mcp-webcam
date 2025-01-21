@@ -111,7 +111,7 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 const server = new Server(
   {
     name: "mcp-capture",
-    version: "0.0.4",
+    version: "0.0.5",
   },
   {
     capabilities: {
