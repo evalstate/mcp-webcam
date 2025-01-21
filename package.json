@@ -8,6 +8,15 @@
   "bin": {
     "mcp-webcam": "./dist/server.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evalstate/mcp-webcam.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/evalstate/mcp-webcam/issues"
+  },
+  "homepage": "https://github.com/evalstate/mcp-webcam#readme",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
