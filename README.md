@@ -1,50 +1,27 @@
-# React + TypeScript + Vite
+# mcp-webcam
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Use your Webcam to send live images to Claude Desktop (or other MCP Client). 
 
-Currently, two official plugins are available:
+Also contains Assistant driven screenshots (user intervention required).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Installation
 
-## Expanding the ESLint configuration
+Package is @llmindset/mcp-webcam. Entry point is /dist/server.ts
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+Takes a single argument to set the Port for the embedded Express server. Default is 3333 (so it doesn't conflict with Inspector).
 
-- Configure the top-level `parserOptions` property like this:
+TBC - will add Smithery instructions once package published and tested by myself.
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+Also need to test on Mac OS (my webcam is broken).
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Usage
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding`.
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+You can ask for Screenshots - navigate to the browser so that you can guide the capture area when the request comes in. Screenshots are automatically resized to be manageable for Claude (useful if you have a 4K Screen).
+
+## Other notes
+
+That's it really. This is a demonstration of supplying Resources to Claude's context via an MCP Server UI. This project might prove useful if you want to build a local, interactive MCP Server.
+
+Please read the article at https://llmindset.co.uk/posts/2025/01/resouce-handling-mcp for more details about handling files and resources in LLM / MCP Chat Applications.
