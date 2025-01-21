@@ -111,13 +111,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "Gets the latest picture from the webcam.",
         inputSchema: { type: "object", parameters: {} } as ToolInput,
       },
+      {
+        name: "screenshot",
+        description: "Gets a screenshot of the current screen or window",
+        inputSchema: { type: "object", parameters: {} } as ToolInput,
+      },
     ],
   };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-
-  if(0 === clients.size){
+  if (0 === clients.size) {
     return {
       isError: true,
       content: [
@@ -126,7 +130,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: `Have you opened your web browser?. Please go to http://localhost:${getPort()}, enable your Webcam and try again.`,
         },
       ],
-    }
+    };
   }
 
   const clientId = Array.from(clients.keys())[0];
@@ -144,21 +148,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Tell the client to capture using the write method on the Response object
     clients
       .get(clientId)
-      ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
+      ?.write(`data: ${JSON.stringify({ type: request.params.name })}\n\n`);
   });
 
   const { mimeType, base64Data } = parseDataUrl(imageData);
+
+  const message =
+    request.params.name === "screenshot"
+      ? "Here is the requested screenshot"
+      : "Here is the latest image from the Webcam";
 
   return {
     content: [
       {
         type: "text",
-        text: `Here is the latest image from the WebCam.`,
+        text: message,
       },
       {
         type: "image",
         data: base64Data,
-        mimeType: mimeType
+        mimeType: mimeType,
       },
     ],
   };
@@ -172,11 +181,11 @@ interface ParsedDataUrl {
 function parseDataUrl(dataUrl: string): ParsedDataUrl {
   const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!matches) {
-    throw new Error('Invalid data URL format');
+    throw new Error("Invalid data URL format");
   }
   return {
     mimeType: matches[1],
-    base64Data: matches[2]
+    base64Data: matches[2],
   };
 }
 

@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { captureScreen } from "@/utils/screenCapture";
-import { toast } from "sonner"; // Add this import if you're using sonner, or use your preferred toast library
 
 export function WebcamCapture() {
   const [webcamInstance, setWebcamInstance] = useState<Webcam | null>(null);
@@ -20,7 +19,6 @@ export function WebcamCapture() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
-  const [isCapturingScreen, setIsCapturingScreen] = useState(false);
 
   const getImage = useCallback(() => {
     console.log('getImage called, frozenFrame state:', frozenFrame);
@@ -136,7 +134,7 @@ export function WebcamCapture() {
               return;
             }
 
-            console.log("Taking screenshot...");
+            console.log("Taking webcam image...");
             const imageSrc = getImage();
             if (!imageSrc) {
               console.error("Failed to get image");
@@ -153,7 +151,7 @@ export function WebcamCapture() {
             console.log("Image sent to server");
             break;
 
-          case "captureScreen":
+          case "screenshot":
             console.log("Screen capture triggered");
             if (!clientIdRef.current) {
               console.error("Cannot capture - client ID not set");
