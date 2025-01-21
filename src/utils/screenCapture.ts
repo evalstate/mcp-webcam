@@ -25,6 +25,22 @@ export async function captureScreen(): Promise<string> {
 
         const context = canvas.getContext("2d");
         context?.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Check if resizing is needed
+        const MAX_DIMENSION = 1568;
+        if (canvas.width > MAX_DIMENSION || canvas.height > MAX_DIMENSION) {
+            const scaleFactor = MAX_DIMENSION / Math.max(canvas.width, canvas.height);
+            const newWidth = Math.round(canvas.width * scaleFactor);
+            const newHeight = Math.round(canvas.height * scaleFactor);
+
+            const resizeCanvas = document.createElement("canvas");
+            resizeCanvas.width = newWidth;
+            resizeCanvas.height = newHeight;
+            const resizeContext = resizeCanvas.getContext("2d");
+            resizeContext?.drawImage(canvas, 0, 0, newWidth, newHeight);
+            return resizeCanvas.toDataURL("image/png");
+        }
+
         return canvas.toDataURL("image/png");
     } catch (error) {
         console.error("Error capturing screenshot:", error);
