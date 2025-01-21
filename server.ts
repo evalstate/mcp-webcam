@@ -37,7 +37,7 @@ app.get("/api/health", (_, res) => {
 });
 
 // Store clients with their resolve functions
-let captureCallbacks = new Map<string, (image: string) => void>();
+let captureCallbacks = new Map<string, (response: string | { error: string }) => void>();
 
 app.get("/api/events", (req, res) => {
   console.error("New SSE connection request");
@@ -71,6 +71,19 @@ app.post("/api/capture-result", express.json({ limit: "50mb" }), (req, res) => {
 
   if (callback) {
     callback(image);
+    captureCallbacks.delete(clientId);
+  }
+
+  res.json({ success: true });
+});
+
+// Add this near other endpoint definitions
+app.post("/api/capture-error", express.json(), (req, res) => {
+  const { clientId, error } = req.body;
+  const callback = captureCallbacks.get(clientId);
+
+  if (callback) {
+    callback({ error: error.message || "Unknown error occurred" });
     captureCallbacks.delete(clientId);
   }
 
@@ -139,19 +152,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     throw new Error("No clients connected");
   }
 
-  // Create a promise that will resolve with the image
-  const imageData = await new Promise<string>((resolve) => {
-    // Store the resolve function
+  // Modified promise to handle both success and error cases
+  const result = await new Promise<string | { error: string }>((resolve) => {
     console.error(`Capturing for ${clientId}`);
     captureCallbacks.set(clientId, resolve);
 
-    // Tell the client to capture using the write method on the Response object
     clients
       .get(clientId)
       ?.write(`data: ${JSON.stringify({ type: request.params.name })}\n\n`);
   });
 
-  const { mimeType, base64Data } = parseDataUrl(imageData);
+  // Handle error case
+  if (typeof result === 'object' && 'error' in result) {
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `Failed to capture ${request.params.name}: ${result.error}`,
+        },
+      ],
+    };
+  }
+
+  const { mimeType, base64Data } = parseDataUrl(result);
 
   const message =
     request.params.name === "screenshot"

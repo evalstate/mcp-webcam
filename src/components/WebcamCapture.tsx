@@ -125,21 +125,33 @@ export function WebcamCapture() {
 
           case "capture":
             console.log(`Capture triggered - webcam status:`, !!webcamInstance);
-            if (!webcamInstance) {
-              console.error("Cannot capture - webcam not initialized");
-              return;
-            }
-            if (!clientIdRef.current) {
-              console.error("Cannot capture - client ID not set");
+            if (!webcamInstance || !clientIdRef.current) {
+              const error = !webcamInstance ? "Webcam not initialized" : "Client ID not set";
+              await fetch("/api/capture-error", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  clientId: clientIdRef.current,
+                  error: { message: error }
+                }),
+              });
               return;
             }
 
             console.log("Taking webcam image...");
             const imageSrc = getImage();
             if (!imageSrc) {
-              console.error("Failed to get image");
+              await fetch("/api/capture-error", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  clientId: clientIdRef.current,
+                  error: { message: "Failed to capture image" }
+                }),
+              });
               return;
             }
+            
             await fetch("/api/capture-result", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -171,6 +183,14 @@ export function WebcamCapture() {
               console.log("Screen capture sent to server");
             } catch (error) {
               console.error("Screen capture failed:", error);
+              await fetch("/api/capture-error", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  clientId: clientIdRef.current,
+                  error: { message: (error as Error).message || "Screen capture failed" }
+                }),
+              });
             }
             break;
 
