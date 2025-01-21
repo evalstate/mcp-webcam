@@ -228,11 +228,14 @@ export function WebcamCapture() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Default camera</SelectItem>
-                {devices.map((device) => (
-                  <SelectItem key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Camera ${devices.indexOf(device) + 1}`}
-                  </SelectItem>
-                ))}
+                {devices.map((device) => {
+                  const deviceId = device.deviceId || `device-${devices.indexOf(device)}`;
+                  return (
+                    <SelectItem key={deviceId} value={deviceId}>
+                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -278,7 +281,7 @@ export function WebcamCapture() {
             variant="secondary"
             size="lg"
           >
-            Capture Screen
+            Capture Screen (Test)
           </Button>
         </CardFooter>
       </Card>
