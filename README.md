@@ -1,5 +1,6 @@
 # mcp-webcam
 
+[![smithery badge](https://smithery.ai/badge/@evalstate/mcp-webcam)](https://smithery.ai/server/@evalstate/mcp-webcam)
 Use your Webcam to send live images to Claude Desktop (or other MCP Client).  
 
 Provides `"capture"` and `"screenshot"` tools to allow Claude to take a frame from the webcam or initiate taking a screenshot.
@@ -8,6 +9,15 @@ Provides a `current view from the webcam` resource too.
 
 ## Installation
 
+### Installing via Smithery
+
+To install mcp-webcam for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@evalstate/mcp-webcam):
+
+```bash
+npx -y @smithery/cli install @evalstate/mcp-webcam --client claude
+```
+
+### Manual Installation
 NPM Package is `@llmindset/mcp-webcam`.
 
 Will add Smithery instructions once package published and tested by myself.
