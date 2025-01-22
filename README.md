@@ -15,7 +15,7 @@ Provides a `current view from the webcam` resource too.
 To install Webcam for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@evalstate/mcp-webcam):
 
 ```bash
-npx -y @smithery/cli install @evalstate/mcp-webcam --client claude
+npx -y @smithery/cli install @llmindset/mcp-webcam --client claude
 ```
 
 NPM Package is `@llmindset/mcp-webcam`.
