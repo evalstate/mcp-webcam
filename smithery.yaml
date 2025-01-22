@@ -1,0 +1,16 @@
+# Smithery configuration file: https://smithery.ai/docs/deployments
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    properties:
+      port:
+        type: number
+        default: 3333
+        description: The port on which the MCP webcam server will run.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'node', args: ['dist/server.js', config.port ? '--port ' + config.port : ''], env: {} })
