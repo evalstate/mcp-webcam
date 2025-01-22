@@ -16,8 +16,6 @@ Takes a single argument to set the Port for the embedded Express server.
 
 Default port is `3333` (to avoid conflict if using with Inspector).
 
-Also need to test on Mac OS (my webcam is broken).
-
 ## Usage
 
 Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask Claude to `get the latest picture from my webcam`, or `Claude, take a look at what I'm holding` or `what colour top am i wearing?`. You can "freeze" the current image and that will be returned to Claude rather than a live capture. 
