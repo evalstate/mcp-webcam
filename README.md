@@ -32,4 +32,6 @@ This MCP Server was built to demonstrate exposing a User Interface on an MCP Ser
 
 This project might prove useful if you want to build a local, interactive MCP Server.
 
+Thanks to https://github.com/tadasant for help with testing and setup. 
+
 Please read the article at https://llmindset.co.uk/posts/2025/01/resouce-handling-mcp for more details about handling files and resources in LLM / MCP Chat Applications.

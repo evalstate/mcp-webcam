@@ -113,8 +113,8 @@ type ToolInput = z.infer<typeof ToolInputSchema>;
 
 const server = new Server(
   {
-    name: "mcp-capture",
-    version: "0.0.6",
+    name: "mcp-webcam",
+    version: "0.1.0",
   },
   {
     capabilities: {
@@ -305,7 +305,7 @@ async function main() {
   };
 
   // Handle stdin/stdout events
-  process.stdin.on('end', () => handleShutdown('stdin ended'));
+  process.stdin.on('end', () => handleShutdown('stdin ended')); // claude desktop on os x does this
   process.stdin.on('close', () => handleShutdown('stdin closed'));
   process.stdout.on('error', () => handleShutdown('stdout error'));
   process.stdout.on('close', () => handleShutdown('stdout closed'));
