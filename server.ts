@@ -152,7 +152,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       content: [
         {
           type: "text",
-          text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, enable your Webcam and try again.`,
+          text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
         },
       ],
     };
@@ -286,13 +286,37 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 
 async function main() {
   const transport = new StdioServerTransport();
+  
+  async function handleShutdown(reason = 'unknown') {    
+    console.error(`Initiating shutdown (reason: ${reason})`);
 
-  // Handle transport closure
+    try {
+      await transport.close();
+      process.exit(0);
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+      process.exit(1);
+    }
+  }
+
+  // Handle transport closure (not called by Claude Desktop)
   transport.onclose = () => {
-    console.error("Transport closed, shutting down...");
-    process.exit(0);
+    handleShutdown('transport closed');
   };
-  await server.connect(transport);
+
+  // Handle stdin/stdout events
+  process.stdin.on('end', () => handleShutdown('stdin ended'));
+  process.stdin.on('close', () => handleShutdown('stdin closed'));
+  process.stdout.on('error', () => handleShutdown('stdout error'));
+  process.stdout.on('close', () => handleShutdown('stdout closed'));
+
+  try {
+    await server.connect(transport);
+    console.error('Server connected');
+  } catch (error) {
+    console.error('Failed to connect server:', error);
+    handleShutdown('connection failed');
+  }
 }
 
 main().catch((error) => {
