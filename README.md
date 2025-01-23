@@ -6,6 +6,8 @@ Provides `"capture"` and `"screenshot"` tools to allow Claude to take a frame fr
 
 Provides a `current view from the webcam` resource too.
 
+<a href="https://glama.ai/mcp/servers/plbefh6h9w"><img width="380" height="200" src="https://glama.ai/mcp/servers/plbefh6h9w/badge" alt="Webcam Server MCP server" /></a>
+
 ## Installation
 
 NPM Package is `@llmindset/mcp-webcam`.
