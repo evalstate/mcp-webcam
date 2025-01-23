@@ -10,8 +10,6 @@ Provides a `current view from the webcam` resource too.
 
 NPM Package is `@llmindset/mcp-webcam`.
 
-Will add Smithery instructions once package published and tested by myself.
-
 Takes a single argument to set the Port for the embedded Express server. 
 
 Default port is `3333` (to avoid conflict if using with Inspector).
