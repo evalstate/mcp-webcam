@@ -10,6 +10,20 @@ Provides a `current view from the webcam` resource too.
 
 NPM Package is `@llmindset/mcp-webcam`.
 
+Install a recent version of [NodeJS](https://nodejs.org/en/download) for your platform, then add the following to the `mcpServers` section of your `claude_desktop_config.json` file:
+
+```
+    "webcam": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@llmindset/mcp-webcam"
+      ]
+    }
+```
+
+As long as you are using Claude Desktop 0.78 or greater, this will work on both Windows and MacOS.
+
 Takes a single argument to set the Port for the embedded Express server. 
 
 Default port is `3333` (to avoid conflict if using with Inspector).
