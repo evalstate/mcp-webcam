@@ -6,7 +6,6 @@ Provides `"capture"` and `"screenshot"` tools to allow Claude to take a frame fr
 
 Provides a `current view from the webcam` resource too.
 
-<a href="https://glama.ai/mcp/servers/plbefh6h9w"><img width="380" height="200" src="https://glama.ai/mcp/servers/plbefh6h9w/badge" alt="Webcam Server MCP server" /></a>
 
 ## Installation
 
@@ -47,3 +46,7 @@ This project might prove useful if you want to build a local, interactive MCP Se
 Thanks to  https://github.com/tadasant for help with testing and setup. 
 
 Please read the article at [https://llmindset.co.uk/posts/2025/01/resouce-handling-mcp](https://llmindset.co.uk/posts/2025/01/mcp-files-resources-part1/) for more details about handling files and resources in LLM / MCP Chat Applications, and why you might want to do this.
+
+## Third Party MCP Services
+
+<a href="https://glama.ai/mcp/servers/plbefh6h9w"><img width="380" height="200" src="https://glama.ai/mcp/servers/plbefh6h9w/badge" alt="Webcam Server MCP server" /></a>
