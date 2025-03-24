@@ -11,6 +11,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
   ToolSchema,
+  SamplingMessageSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
@@ -45,6 +46,8 @@ let captureCallbacks = new Map<
   string,
   (response: string | { error: string }) => void
 >();
+
+// We don't need a separate sampling callbacks map since we're using the SDK directly
 
 app.get("/api/events", (req, res) => {
   console.error("New SSE connection request");
@@ -96,6 +99,8 @@ app.post("/api/capture-error", express.json(), (req, res) => {
 
   res.json({ success: true });
 });
+
+// We don't need these endpoints as we're using the SDK's built-in sampling capabilities
 
 // For any other route, send the index.html file
 app.get("*", (_, res) => {
@@ -207,6 +212,61 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       },
     ],
   };
+});
+
+// Process sampling request from the web UI
+async function processSamplingRequest(imageDataUrl: string): Promise<any> {
+  const { mimeType, base64Data } = parseDataUrl(imageDataUrl);
+  
+  try {
+    // Create a sampling request to the client using the SDK's types
+    const result = await server.createMessage({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: "What is the user holding?"
+          }
+        },
+        {
+          role: "user",
+          content: {
+            type: "image",
+            data: base64Data,
+            mimeType: mimeType
+          }
+        }
+      ],
+      maxTokens: 1000, // Reasonable limit for the response
+    });
+    
+    return result;
+  } catch (error) {
+    console.error("Error during sampling:", error);
+    throw error;
+  }
+}
+
+// Handle SSE 'sample' event from WebcamCapture component
+app.post("/api/process-sample", express.json({ limit: "50mb" }), async (req, res) => {
+  const { image } = req.body;
+  
+  if (!image) {
+    res.status(400).json({ error: "Missing image data" });
+    return;
+  }
+  
+  try {
+    const result = await processSamplingRequest(image);
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error("Sampling processing error:", error);
+    res.status(500).json({ 
+      error: String(error),
+      errorDetail: error instanceof Error ? error.stack : undefined
+    });
+  }
 });
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {

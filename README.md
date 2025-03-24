@@ -35,6 +35,10 @@ Start Claude Desktop, and connect to `http://localhost:3333`. You can then ask C
 
 You can ask for Screenshots - navigate to the browser so that you can guide the capture area when the request comes in. Screenshots are automatically resized to be manageable for Claude (useful if you have a 4K Screen). The button is there to allow testing of your platform specific Screenshot UX - it doesn't do anything other than prepare you for a Claude intiated request. NB this does not **not** work on Safari as it requires human initiation.
 
+## MCP Sampling
+
+Press the "What am I holding?" button To send a Sampling request to the Client, containing the Image and the question `What is the User holding?`.
+
 ## Other notes
 
 That's it really. 

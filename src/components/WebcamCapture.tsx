@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -19,6 +20,11 @@ export function WebcamCapture() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
+  
+  // New state for sampling results
+  const [samplingResult, setSamplingResult] = useState<string | null>(null);
+  const [samplingError, setSamplingError] = useState<string | null>(null);
+  const [isSampling, setIsSampling] = useState(false);
 
   const getImage = useCallback(() => {
     console.log('getImage called, frozenFrame state:', frozenFrame);
@@ -75,6 +81,49 @@ export function WebcamCapture() {
     } catch (error) {
       console.error("Screen capture error:", error);
       alert('Screen capture failed: ' + (error as Error).message);
+    }
+  };
+  
+  // New function to handle sampling
+  const handleSample = async () => {
+    console.log('Sample button clicked');
+    setSamplingError(null);
+    setSamplingResult(null);
+    setIsSampling(true);
+    
+    try {
+      const imageSrc = getImage();
+      if (!imageSrc) {
+        throw new Error('Failed to capture image for sampling');
+      }
+      
+      console.log('Sending image for sampling...');
+      const response = await fetch("/api/process-sample", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: imageSrc,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process sample');
+      }
+      
+      const data = await response.json();
+      console.log('Sampling response:', data);
+      
+      if (data.success && data.result && data.result.content?.type === 'text') {
+        setSamplingResult(data.result.content.text);
+      } else {
+        throw new Error('Invalid sampling result format');
+      }
+    } catch (error) {
+      console.error('Sampling error:', error);
+      setSamplingError((error as Error).message || 'An unknown error occurred');
+    } finally {
+      setIsSampling(false);
     }
   };
 
@@ -194,6 +243,10 @@ export function WebcamCapture() {
             }
             break;
 
+          case "sample":
+            // Handle sample event if needed (currently handled directly by handle Sample function)
+            break;
+
           default:
             console.warn("Unknown message type:", data.type);
         }
@@ -267,8 +320,31 @@ export function WebcamCapture() {
               </div>
             )}
           </div>
+          
+          {/* Sampling results display */}
+          {samplingResult && (
+            <div className="mt-4">
+              <Alert>
+                <AlertTitle>Analysis Result</AlertTitle>
+                <AlertDescription>
+                  {samplingResult}
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+          
+          {samplingError && (
+            <div className="mt-4">
+              <Alert variant="destructive">
+                <AlertTitle>Sampling Error</AlertTitle>
+                <AlertDescription>
+                  {samplingError}
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
         </CardContent>
-        <CardFooter className="flex justify-center gap-4 pb-6">
+        <CardFooter className="flex flex-wrap justify-center gap-4 pb-6">
           <Button
             onClick={toggleFreeze}
             variant={frozenFrame ? "destructive" : "outline"}
@@ -281,7 +357,15 @@ export function WebcamCapture() {
             variant="secondary"
             size="lg"
           >
-            Capture Screen (Test)
+            Capture Screen
+          </Button>
+          <Button
+            onClick={handleSample}
+            variant="default"
+            size="lg"
+            disabled={isSampling}
+          >
+            {isSampling ? "Analyzing..." : "What am I holding?"}
           </Button>
         </CardFooter>
       </Card>
