@@ -39,6 +39,9 @@ You can ask for Screenshots - navigate to the browser so that you can guide the 
 
 Press the "What am I holding?" button To send a Sampling request to the Client, containing the Image and the question `What is the User holding?`.
 
+> [!TIP]
+> Claude Desktop does not currently support Sampling. If you want a Client that can handle multi-modal sampling request, try https://github.com/evalstate/fast-agent/
+
 ## Other notes
 
 That's it really. 
