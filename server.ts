@@ -5,6 +5,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { InMemoryEventStore } from "@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js";
 import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
@@ -14,6 +16,47 @@ import {
   SamplingMessageSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { parseArgs } from "node:util";
+
+// Parse command line arguments
+const { values, positionals } = parseArgs({
+  options: {
+    streaming: { type: 'boolean', short: 's' },
+    port: { type: 'string', short: 'p' },
+    help: { type: 'boolean', short: 'h' },
+  },
+  args: process.argv.slice(2),
+  allowPositionals: true,
+});
+
+// Show help if requested
+if (values.help) {
+  console.log(`
+Usage: mcp-webcam [options] [port]
+
+Options:
+  -s, --streaming    Enable streaming HTTP mode (default: stdio mode)
+  -p, --port <port>  Server port (default: 3333)
+  -h, --help         Show this help message
+
+Examples:
+  # Standard stdio mode (for Claude Desktop)
+  mcp-webcam
+  
+  # Streaming HTTP mode on default port 3333
+  mcp-webcam --streaming
+  
+  # Streaming with custom port
+  mcp-webcam --streaming --port 8080
+  
+  # Legacy: port as positional argument (still supported)
+  mcp-webcam 8080
+`);
+  process.exit(0);
+}
+
+const isStreamingMode = values.streaming || false;
 
 /** EXPRESS SERVER SETUP  */
 let clients = new Map<string, express.Response>();
@@ -24,9 +67,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 function getPort(): number {
-  const portArg = process.argv[2];
-  if (portArg && !isNaN(Number(portArg))) {
-    return Number(portArg);
+  // Check command line argument first
+  if (values.port && !isNaN(Number(values.port))) {
+    return Number(values.port);
+  }
+  // Check positional argument for backward compatibility
+  if (positionals.length > 0 && !isNaN(Number(positionals[0]))) {
+    return Number(positionals[0]);
   }
   return 3333;
 }
@@ -344,38 +391,197 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
   };
 }
 
-async function main() {
-  const transport = new StdioServerTransport();
-  
-  async function handleShutdown(reason = 'unknown') {    
-    console.error(`Initiating shutdown (reason: ${reason})`);
+// Store active streaming transports
+const streamingTransports = new Map<string, StreamableHTTPServerTransport>();
+
+// Set up streaming HTTP routes
+function setupStreamingRoutes() {
+  // Handle POST requests for JSON-RPC
+  app.post('/mcp', async (req, res) => {
+    console.error('Received MCP POST request');
+    try {
+      // Check for existing session ID
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      let transport: StreamableHTTPServerTransport;
+
+      if (sessionId && streamingTransports.has(sessionId)) {
+        // Reuse existing transport
+        transport = streamingTransports.get(sessionId)!;
+      } else if (!sessionId) {
+        // New initialization request
+        const eventStore = new InMemoryEventStore();
+        
+        transport = new StreamableHTTPServerTransport({
+          enableJsonResponse: false, // We want SSE streaming, not JSON mode
+          eventStore,
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId: string) => {
+            console.error(`Session initialized with ID: ${sessionId}`);
+            streamingTransports.set(sessionId, transport);
+          },
+        });
+
+        // Set up onclose handler to clean up transport when closed
+        transport.onclose = () => {
+          const sid = transport.sessionId;
+          if (sid && streamingTransports.has(sid)) {
+            console.error(`Transport closed for session ${sid}, removing from transports map`);
+            streamingTransports.delete(sid);
+          }
+        };
+
+        // Connect the transport to the MCP server
+        await server.connect(transport);
+        await transport.handleRequest(req, res);
+        return;
+      } else {
+        // Invalid request - no session ID or not initialization request
+        res.status(400).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Bad Request: No valid session ID provided',
+          },
+          id: req?.body?.id,
+        });
+        return;
+      }
+
+      // Handle the request with existing transport
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      console.error('Error handling MCP request:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Internal server error',
+          },
+          id: req?.body?.id,
+        });
+      }
+    }
+  });
+
+  // Handle GET requests for SSE streams
+  app.get('/mcp', async (req, res) => {
+    console.error('Received MCP GET request');
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (!sessionId || !streamingTransports.has(sessionId)) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'Bad Request: No valid session ID provided',
+        },
+        id: req?.body?.id,
+      });
+      return;
+    }
+
+    const transport = streamingTransports.get(sessionId)!;
+    await transport.handleRequest(req, res);
+  });
+
+  // Handle DELETE requests for session termination
+  app.delete('/mcp', async (req, res) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (!sessionId || !streamingTransports.has(sessionId)) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: 'Bad Request: No valid session ID provided',
+        },
+        id: req?.body?.id,
+      });
+      return;
+    }
+
+    console.error(`Received session termination request for session ${sessionId}`);
 
     try {
-      await transport.close();
-      process.exit(0);
+      const transport = streamingTransports.get(sessionId)!;
+      await transport.handleRequest(req, res);
     } catch (error) {
-      console.error('Error during shutdown:', error);
-      process.exit(1);
+      console.error('Error handling session termination:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Error handling session termination',
+          },
+          id: req?.body?.id,
+        });
+      }
     }
-  }
+  });
 
-  // Handle transport closure (not called by Claude Desktop)
-  transport.onclose = () => {
-    handleShutdown('transport closed');
-  };
+  console.error('StreamableHTTP transport routes initialized');
+}
 
-  // Handle stdin/stdout events
-  process.stdin.on('end', () => handleShutdown('stdin ended')); // claude desktop on os x does this
-  process.stdin.on('close', () => handleShutdown('stdin closed'));
-  process.stdout.on('error', () => handleShutdown('stdout error'));
-  process.stdout.on('close', () => handleShutdown('stdout closed'));
+async function main() {
+  if (isStreamingMode) {
+    console.error('Starting in streaming HTTP mode');
+    console.error(`Server running at http://localhost:${PORT}`);
+    console.error(`MCP endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`);
+    
+    // Set up streaming routes
+    setupStreamingRoutes();
+    
+    // Handle graceful shutdown
+    process.on('SIGINT', async () => {
+      console.error('\nShutting down server...');
+      
+      // Close all active transports
+      for (const [sessionId, transport] of streamingTransports) {
+        try {
+          if (transport?.onclose) {
+            transport.onclose();
+          }
+        } catch (error) {
+          console.error(`Error closing transport for session ${sessionId}:`, error);
+        }
+      }
+      
+      process.exit(0);
+    });
+  } else {
+    // Standard stdio mode
+    const transport = new StdioServerTransport();
+    
+    async function handleShutdown(reason = 'unknown') {    
+      console.error(`Initiating shutdown (reason: ${reason})`);
 
-  try {
-    await server.connect(transport);
-    console.error('Server connected');
-  } catch (error) {
-    console.error('Failed to connect server:', error);
-    handleShutdown('connection failed');
+      try {
+        await transport.close();
+        process.exit(0);
+      } catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+      }
+    }
+
+    // Handle transport closure (not called by Claude Desktop)
+    transport.onclose = () => {
+      handleShutdown('transport closed');
+    };
+
+    // Handle stdin/stdout events
+    process.stdin.on('end', () => handleShutdown('stdin ended')); // claude desktop on os x does this
+    process.stdin.on('close', () => handleShutdown('stdin closed'));
+    process.stdout.on('error', () => handleShutdown('stdout error'));
+    process.stdout.on('close', () => handleShutdown('stdout closed'));
+
+    try {
+      await server.connect(transport);
+      console.error('Server connected via stdio');
+    } catch (error) {
+      console.error('Failed to connect server:', error);
+      handleShutdown('connection failed');
+    }
   }
 }
 
