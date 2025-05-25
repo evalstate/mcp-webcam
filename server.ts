@@ -14,6 +14,8 @@ import {
   ReadResourceRequestSchema,
   ToolSchema,
   SamplingMessageSchema,
+  CreateMessageResult,
+  InitializeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -22,9 +24,9 @@ import { parseArgs } from "node:util";
 // Parse command line arguments
 const { values, positionals } = parseArgs({
   options: {
-    streaming: { type: 'boolean', short: 's' },
-    port: { type: 'string', short: 'p' },
-    help: { type: 'boolean', short: 'h' },
+    streaming: { type: "boolean", short: "s" },
+    port: { type: "string", short: "p" },
+    help: { type: "boolean", short: "h" },
   },
   args: process.argv.slice(2),
   allowPositionals: true,
@@ -88,6 +90,17 @@ app.get("/api/health", (_, res) => {
   res.json({ status: "ok" });
 });
 
+// Get active sessions
+app.get("/api/sessions", (_, res) => {
+  const sessions = Array.from(sessionMetadata.values()).map((session) => ({
+    id: session.id,
+    connectedAt: session.connectedAt.toISOString(),
+    capabilities: session.capabilities,
+    clientInfo: session.clientInfo,
+  }));
+  res.json({ sessions });
+});
+
 // Store clients with their resolve functions
 let captureCallbacks = new Map<
   string,
@@ -149,20 +162,141 @@ app.post("/api/capture-error", express.json(), (req, res) => {
 
 // We don't need these endpoints as we're using the SDK's built-in sampling capabilities
 
-// For any other route, send the index.html file
-app.get("*", (_, res) => {
-  // Important: Send the built index.html
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-app.listen(PORT, () => {
-  console.error(`Server is running on port ${PORT}`);
-});
+// Don't start listening yet - we'll do it after setting up routes
 
 /** MCP Server Setup */
-const ToolInputSchema = ToolSchema.shape.inputSchema;
-type ToolInput = z.infer<typeof ToolInputSchema>;
 
+// Function to set up server handlers
+function setupServerHandlers(server: Server) {
+  // Capture client info during initialization
+  server.setRequestHandler(InitializeRequestSchema, async (request) => {
+    // Try to find the transport and session ID for this server
+    const transport = serverToTransport.get(server);
+    if (transport && transport.sessionId && request.params.clientInfo) {
+      const metadata = sessionMetadata.get(transport.sessionId);
+      if (metadata) {
+        metadata.clientInfo = {
+          name: request.params.clientInfo.name,
+          version: request.params.clientInfo.version,
+        };
+        sessionMetadata.set(transport.sessionId, metadata);
+        console.error(
+          `Captured client info for session ${transport.sessionId}:`,
+          request.params.clientInfo
+        );
+      }
+    }
+
+    // Return server info
+    return {
+      protocolVersion: "2024-11-05",
+      capabilities: {
+        tools: {},
+        resources: {},
+        sampling: {},
+      },
+      serverInfo: {
+        name: "mcp-webcam",
+        version: "0.1.0",
+      },
+    };
+  });
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: [
+        {
+          name: "capture",
+          description:
+            "Gets the latest picture from the webcam. You can use this " +
+            " if the human asks questions about their immediate environment,  " +
+            "if you want to see the human or to examine an object they may be " +
+            "referring to or showing you.",
+          inputSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+          },
+        },
+        {
+          name: "screenshot",
+          description: "Gets a screenshot of the current screen or window",
+          inputSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+          },
+        },
+      ],
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (0 === clients.size) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
+          },
+        ],
+      };
+    }
+
+    const clientId = Array.from(clients.keys())[0];
+
+    if (!clientId) {
+      throw new Error("No clients connected");
+    }
+
+    // Modified promise to handle both success and error cases
+    const result = await new Promise<string | { error: string }>((resolve) => {
+      console.error(`Capturing for ${clientId}`);
+      captureCallbacks.set(clientId, resolve);
+
+      clients
+        .get(clientId)
+        ?.write(`data: ${JSON.stringify({ type: request.params.name })}\n\n`);
+    });
+
+    // Handle error case
+    if (typeof result === "object" && "error" in result) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `Failed to capture ${request.params.name}: ${result.error}`,
+          },
+        ],
+      };
+    }
+
+    const { mimeType, base64Data } = parseDataUrl(result);
+
+    const message =
+      request.params.name === "screenshot"
+        ? "Here is the requested screenshot"
+        : "Here is the latest image from the Webcam";
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: message,
+        },
+        {
+          type: "image",
+          data: base64Data,
+          mimeType: mimeType,
+        },
+      ],
+    };
+  });
+}
+
+// Create the main server instance for stdio mode
 const server = new Server(
   {
     name: "mcp-webcam",
@@ -172,122 +306,74 @@ const server = new Server(
     capabilities: {
       tools: {},
       resources: {},
+      sampling: {}, // Enable sampling capability
     },
   }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "capture",
-        description:
-          "Gets the latest picture from the webcam. You can use this " +
-          " if the human asks questions about their immediate environment,  " +
-          "if you want to see the human or to examine an object they may be " +
-          "referring to or showing you.",
-        inputSchema: { type: "object", parameters: {} } as ToolInput,
-      },
-      {
-        name: "screenshot",
-        description: "Gets a screenshot of the current screen or window",
-        inputSchema: { type: "object", parameters: {} } as ToolInput,
-      },
-    ],
-  };
-});
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (0 === clients.size) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
-        },
-      ],
-    };
-  }
-
-  const clientId = Array.from(clients.keys())[0];
-
-  if (!clientId) {
-    throw new Error("No clients connected");
-  }
-
-  // Modified promise to handle both success and error cases
-  const result = await new Promise<string | { error: string }>((resolve) => {
-    console.error(`Capturing for ${clientId}`);
-    captureCallbacks.set(clientId, resolve);
-
-    clients
-      .get(clientId)
-      ?.write(`data: ${JSON.stringify({ type: request.params.name })}\n\n`);
-  });
-
-  // Handle error case
-  if (typeof result === "object" && "error" in result) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text",
-          text: `Failed to capture ${request.params.name}: ${result.error}`,
-        },
-      ],
-    };
-  }
-
-  const { mimeType, base64Data } = parseDataUrl(result);
-
-  const message =
-    request.params.name === "screenshot"
-      ? "Here is the requested screenshot"
-      : "Here is the latest image from the Webcam";
-
-  return {
-    content: [
-      {
-        type: "text",
-        text: message,
-      },
-      {
-        type: "image",
-        data: base64Data,
-        mimeType: mimeType,
-      },
-    ],
-  };
-});
+// Set up handlers on the main server
+setupServerHandlers(server);
 
 // Process sampling request from the web UI
-async function processSamplingRequest(imageDataUrl: string): Promise<any> {
+async function processSamplingRequest(
+  imageDataUrl: string,
+  prompt: string = "What is the user holding?",
+  sessionId?: string
+): Promise<any> {
   const { mimeType, base64Data } = parseDataUrl(imageDataUrl);
-  
+
   try {
+    let samplingServer: Server;
+
+    // In streaming mode, use the transport-specific server
+    if (isStreamingMode && sessionId) {
+      const transport = streamingTransports.get(sessionId);
+      if (!transport) {
+        throw new Error("No active MCP session found for sampling");
+      }
+
+      const transportServer = transportServers.get(sessionId);
+      if (!transportServer) {
+        throw new Error("No server instance found for session");
+      }
+
+      samplingServer = transportServer;
+    } else {
+      // In stdio mode, use the main server
+      samplingServer = server;
+    }
+
+    // Check if server has sampling capability
+    if (!samplingServer.createMessage) {
+      throw new Error(
+        "Server does not support sampling - no MCP client with sampling capabilities connected"
+      );
+    }
+
     // Create a sampling request to the client using the SDK's types
-    const result = await server.createMessage({
+    // Send text and image as separate messages since the SDK doesn't support content arrays
+    console.error("ABOUT TO DO SAMPLING REQUEST");
+    const result: CreateMessageResult = await samplingServer.createMessage({
       messages: [
         {
           role: "user",
           content: {
             type: "text",
-            text: "What is the user holding?"
-          }
+            text: prompt,
+          },
         },
         {
           role: "user",
           content: {
             type: "image",
             data: base64Data,
-            mimeType: mimeType
-          }
-        }
+            mimeType: mimeType,
+          },
+        },
       ],
       maxTokens: 1000, // Reasonable limit for the response
     });
-    
+    console.error("GOT A RESPONSE " + JSON.stringify(result, null, 2));
     return result;
   } catch (error) {
     console.error("Error during sampling:", error);
@@ -296,25 +382,46 @@ async function processSamplingRequest(imageDataUrl: string): Promise<any> {
 }
 
 // Handle SSE 'sample' event from WebcamCapture component
-app.post("/api/process-sample", express.json({ limit: "50mb" }), async (req, res) => {
-  const { image } = req.body;
-  
-  if (!image) {
-    res.status(400).json({ error: "Missing image data" });
-    return;
+app.post(
+  "/api/process-sample",
+  express.json({ limit: "50mb" }),
+  async (req, res) => {
+    const { image, prompt, sessionId } = req.body;
+
+    if (!image) {
+      res.status(400).json({ error: "Missing image data" });
+      return;
+    }
+
+    try {
+      // In streaming mode, use provided sessionId or fall back to first available
+      let selectedSessionId: string | undefined = sessionId;
+      if (isStreamingMode && streamingTransports.size > 0) {
+        if (!selectedSessionId || !streamingTransports.has(selectedSessionId)) {
+          // Fall back to the most recently connected session
+          const sessions = Array.from(sessionMetadata.values()).sort(
+            (a, b) => b.connectedAt.getTime() - a.connectedAt.getTime()
+          );
+          selectedSessionId = sessions[0]?.id;
+        }
+        console.error(`Using session ${selectedSessionId} for sampling`);
+      }
+
+      const result = await processSamplingRequest(
+        image,
+        prompt,
+        selectedSessionId
+      );
+      res.json({ success: true, result });
+    } catch (error) {
+      console.error("Sampling processing error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : String(error),
+        errorDetail: error instanceof Error ? error.stack : undefined,
+      });
+    }
   }
-  
-  try {
-    const result = await processSamplingRequest(image);
-    res.json({ success: true, result });
-  } catch (error) {
-    console.error("Sampling processing error:", error);
-    res.status(500).json({ 
-      error: String(error),
-      errorDetail: error instanceof Error ? error.stack : undefined
-    });
-  }
-});
+);
 
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   if (clients.size === 0) return { resources: [] };
@@ -394,14 +501,41 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 // Store active streaming transports
 const streamingTransports = new Map<string, StreamableHTTPServerTransport>();
 
+// Store transports with their associated server connections for sampling
+const transportServers = new Map<string, Server>();
+
+// Map to track server to transport mapping for client info capture
+const serverToTransport = new WeakMap<Server, StreamableHTTPServerTransport>();
+
+// Store session metadata
+interface SessionMetadata {
+  id: string;
+  connectedAt: Date;
+  capabilities: {
+    sampling: boolean;
+    tools: boolean;
+    resources: boolean;
+  };
+  clientInfo?: {
+    name: string;
+    version: string;
+  };
+}
+
+const sessionMetadata = new Map<string, SessionMetadata>();
+
 // Set up streaming HTTP routes
 function setupStreamingRoutes() {
+  console.error("Setting up MCP routes...");
+
   // Handle POST requests for JSON-RPC
-  app.post('/mcp', async (req, res) => {
-    console.error('Received MCP POST request');
+  app.post("/mcp", async (req, res) => {
+    console.error("Received MCP POST request");
+    console.error("Headers:", req.headers);
+    console.error("Body:", req.body);
     try {
       // Check for existing session ID
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      const sessionId = req.headers["mcp-session-id"] as string | undefined;
       let transport: StreamableHTTPServerTransport;
 
       if (sessionId && streamingTransports.has(sessionId)) {
@@ -410,7 +544,25 @@ function setupStreamingRoutes() {
       } else if (!sessionId) {
         // New initialization request
         const eventStore = new InMemoryEventStore();
-        
+
+        // Create a new server instance for this transport connection
+        const transportServer = new Server(
+          {
+            name: "mcp-webcam",
+            version: "0.1.0",
+          },
+          {
+            capabilities: {
+              tools: {},
+              resources: {},
+              sampling: {}, // Enable sampling capability
+            },
+          }
+        );
+
+        // Set up the same handlers on the transport-specific server
+        setupServerHandlers(transportServer);
+
         transport = new StreamableHTTPServerTransport({
           enableJsonResponse: false, // We want SSE streaming, not JSON mode
           eventStore,
@@ -418,29 +570,52 @@ function setupStreamingRoutes() {
           onsessioninitialized: (sessionId: string) => {
             console.error(`Session initialized with ID: ${sessionId}`);
             streamingTransports.set(sessionId, transport);
+            // Store session metadata
+            sessionMetadata.set(sessionId, {
+              id: sessionId,
+              connectedAt: new Date(),
+              capabilities: {
+                sampling: true, // We enable sampling for all sessions
+                tools: true,
+                resources: true,
+              },
+            });
+            // Store the server instance when the session is initialized
+            transportServers.set(sessionId, transportServer);
+            console.error(`Stored transport server for session ${sessionId}`);
           },
         });
 
-        // Set up onclose handler to clean up transport when closed
+        // Track server to transport mapping after transport is created
+        serverToTransport.set(transportServer, transport);
+        transport.onerror;
+        // TODO -- diagnose why this handler doesn't run
         transport.onclose = () => {
-          const sid = transport.sessionId;
-          if (sid && streamingTransports.has(sid)) {
-            console.error(`Transport closed for session ${sid}, removing from transports map`);
-            streamingTransports.delete(sid);
+          console.error("IN THE ONCLOSE HANDLER");
+          const sessionId = transport.sessionId;
+          if (sessionId && streamingTransports.has(sessionId)) {
+            console.error(
+              `Transport closed for session ${sessionId}, removing from transports map`
+            );
+            streamingTransports.delete(sessionId);
+            transportServers.delete(sessionId);
+            const delmeta = sessionMetadata.delete(sessionId);
+            console.error(`delete session ${delmeta} for ${sessionId}`);
           }
         };
 
-        // Connect the transport to the MCP server
-        await server.connect(transport);
+        // Connect the transport to its dedicated server
+        await transportServer.connect(transport);
+
         await transport.handleRequest(req, res);
         return;
       } else {
         // Invalid request - no session ID or not initialization request
         res.status(400).json({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           error: {
             code: -32000,
-            message: 'Bad Request: No valid session ID provided',
+            message: "Bad Request: No valid session ID provided",
           },
           id: req?.body?.id,
         });
@@ -450,13 +625,13 @@ function setupStreamingRoutes() {
       // Handle the request with existing transport
       await transport.handleRequest(req, res);
     } catch (error) {
-      console.error('Error handling MCP request:', error);
+      console.error("Error handling MCP request:", error);
       if (!res.headersSent) {
         res.status(500).json({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           error: {
             code: -32603,
-            message: 'Internal server error',
+            message: "Internal server error",
           },
           id: req?.body?.id,
         });
@@ -465,15 +640,15 @@ function setupStreamingRoutes() {
   });
 
   // Handle GET requests for SSE streams
-  app.get('/mcp', async (req, res) => {
-    console.error('Received MCP GET request');
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+  app.get("/mcp", async (req, res) => {
+    console.error("Received MCP GET request");
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
     if (!sessionId || !streamingTransports.has(sessionId)) {
       res.status(400).json({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: 'Bad Request: No valid session ID provided',
+          message: "Bad Request: No valid session ID provided",
         },
         id: req?.body?.id,
       });
@@ -485,33 +660,41 @@ function setupStreamingRoutes() {
   });
 
   // Handle DELETE requests for session termination
-  app.delete('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+  app.delete("/mcp", async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    console.error(`HEY I GOT A DELETE REQUEST FOR ${sessionId}`);
     if (!sessionId || !streamingTransports.has(sessionId)) {
       res.status(400).json({
-        jsonrpc: '2.0',
+        jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: 'Bad Request: No valid session ID provided',
+          message: "Bad Request: No valid session ID provided",
         },
         id: req?.body?.id,
       });
       return;
     }
 
-    console.error(`Received session termination request for session ${sessionId}`);
+    console.error(
+      `Received session termination request for session ${sessionId}`
+    );
 
     try {
       const transport = streamingTransports.get(sessionId)!;
       await transport.handleRequest(req, res);
+      await transport.close();
+
+      streamingTransports.delete(sessionId);
+      transportServers.delete(sessionId);
+      sessionMetadata.delete(sessionId);
     } catch (error) {
-      console.error('Error handling session termination:', error);
+      console.error("Error handling session termination:", error);
       if (!res.headersSent) {
         res.status(500).json({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           error: {
             code: -32603,
-            message: 'Error handling session termination',
+            message: "Error handling session termination",
           },
           id: req?.body?.id,
         });
@@ -519,68 +702,93 @@ function setupStreamingRoutes() {
     }
   });
 
-  console.error('StreamableHTTP transport routes initialized');
+  // IMPORTANT: Define the wildcard route AFTER all other routes
+  // This catches any other route and sends the index.html file
+  app.get("*", (_, res) => {
+    // Important: Send the built index.html
+    res.sendFile(path.join(__dirname, "index.html"));
+  });
+
+  console.error("StreamableHTTP transport routes initialized");
 }
 
 async function main() {
   if (isStreamingMode) {
-    console.error('Starting in streaming HTTP mode');
-    console.error(`Server running at http://localhost:${PORT}`);
-    console.error(`MCP endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`);
-    
-    // Set up streaming routes
+    console.error("Starting in streaming HTTP mode");
+
+    // Set up streaming routes BEFORE starting the server
     setupStreamingRoutes();
-    
+
+    // Now start the Express server
+    app.listen(PORT, () => {
+      console.error(`Server running at http://localhost:${PORT}`);
+      console.error(
+        `MCP endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`
+      );
+    });
+
     // Handle graceful shutdown
-    process.on('SIGINT', async () => {
-      console.error('\nShutting down server...');
-      
-      // Close all active transports
+    process.on("SIGINT", async () => {
+      console.error("\nShutting down server...");
+
+      // Close all active transports and their servers
       for (const [sessionId, transport] of streamingTransports) {
         try {
           if (transport?.onclose) {
             transport.onclose();
           }
         } catch (error) {
-          console.error(`Error closing transport for session ${sessionId}:`, error);
+          console.error(
+            `Error closing transport for session ${sessionId}:`,
+            error
+          );
         }
       }
-      
+
+      // Clear the server map
+      transportServers.clear();
+
       process.exit(0);
     });
   } else {
     // Standard stdio mode
+
+    // Start the Express server for the web UI even in stdio mode
+    app.listen(PORT, () => {
+      console.error(`Web UI running at http://localhost:${PORT}`);
+    });
+
     const transport = new StdioServerTransport();
-    
-    async function handleShutdown(reason = 'unknown') {    
+
+    async function handleShutdown(reason = "unknown") {
       console.error(`Initiating shutdown (reason: ${reason})`);
 
       try {
         await transport.close();
         process.exit(0);
       } catch (error) {
-        console.error('Error during shutdown:', error);
+        console.error("Error during shutdown:", error);
         process.exit(1);
       }
     }
 
     // Handle transport closure (not called by Claude Desktop)
     transport.onclose = () => {
-      handleShutdown('transport closed');
+      handleShutdown("transport closed");
     };
 
     // Handle stdin/stdout events
-    process.stdin.on('end', () => handleShutdown('stdin ended')); // claude desktop on os x does this
-    process.stdin.on('close', () => handleShutdown('stdin closed'));
-    process.stdout.on('error', () => handleShutdown('stdout error'));
-    process.stdout.on('close', () => handleShutdown('stdout closed'));
+    process.stdin.on("end", () => handleShutdown("stdin ended")); // claude desktop on os x does this
+    process.stdin.on("close", () => handleShutdown("stdin closed"));
+    process.stdout.on("error", () => handleShutdown("stdout error"));
+    process.stdout.on("close", () => handleShutdown("stdout closed"));
 
     try {
       await server.connect(transport);
-      console.error('Server connected via stdio');
+      console.error("Server connected via stdio");
     } catch (error) {
-      console.error('Failed to connect server:', error);
-      handleShutdown('connection failed');
+      console.error("Failed to connect server:", error);
+      handleShutdown("connection failed");
     }
   }
 }

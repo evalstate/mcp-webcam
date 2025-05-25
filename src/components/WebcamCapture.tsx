@@ -1,7 +1,13 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
@@ -10,7 +16,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { captureScreen } from "@/utils/screenCapture";
+
+interface Session {
+  id: string;
+  connectedAt: string;
+  capabilities: {
+    sampling: boolean;
+    tools: boolean;
+    resources: boolean;
+  };
+  clientInfo?: {
+    name: string;
+    version: string;
+  };
+}
 
 export function WebcamCapture() {
   const [webcamInstance, setWebcamInstance] = useState<Webcam | null>(null);
@@ -20,49 +42,63 @@ export function WebcamCapture() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
-  
+
   // New state for sampling results
   const [samplingResult, setSamplingResult] = useState<string | null>(null);
   const [samplingError, setSamplingError] = useState<string | null>(null);
   const [isSampling, setIsSampling] = useState(false);
 
+  // State for sampling prompt and auto-update
+  const [samplingPrompt, setSamplingPrompt] =
+    useState<string>("What am I holding?");
+  const [autoUpdate, setAutoUpdate] = useState<boolean>(false);
+  const [updateInterval, setUpdateInterval] = useState<number>(30);
+  const autoUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // State for session management
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    null
+  );
+  const sessionPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const getImage = useCallback(() => {
-    console.log('getImage called, frozenFrame state:', frozenFrame);
+    console.log("getImage called, frozenFrame state:", frozenFrame);
     if (frozenFrame) {
-      console.log('Using frozen frame');
+      console.log("Using frozen frame");
       return frozenFrame;
     }
-    console.log('Getting live screenshot');
+    console.log("Getting live screenshot");
     const screenshot = webcamInstance?.getScreenshot();
     return screenshot || null;
   }, [frozenFrame, webcamInstance]);
 
   const toggleFreeze = () => {
-    console.log('toggleFreeze called, current frozenFrame:', frozenFrame);
+    console.log("toggleFreeze called, current frozenFrame:", frozenFrame);
     if (frozenFrame) {
-      console.log('Unfreezing frame');
+      console.log("Unfreezing frame");
       setFrozenFrame(null);
     } else if (webcamInstance) {
-      console.log('Freezing new frame');
+      console.log("Freezing new frame");
       const screenshot = webcamInstance.getScreenshot();
       if (screenshot) {
-        console.log('New frame captured successfully');
+        console.log("New frame captured successfully");
         setFrozenFrame(screenshot);
       }
     }
   };
 
   const handleScreenCapture = async () => {
-    console.log('Screen capture button clicked');
+    console.log("Screen capture button clicked");
     try {
       const screenImage = await captureScreen();
-      console.log('Got screen image, length:', screenImage.length);
-      
+      console.log("Got screen image, length:", screenImage.length);
+
       // Test if we can even get this far
-      alert('Screen captured! Check console for details.');
-      
+      alert("Screen captured! Check console for details.");
+
       if (!clientIdRef.current) {
-        console.error('No client ID available');
+        console.error("No client ID available");
         return;
       }
 
@@ -72,56 +108,71 @@ export function WebcamCapture() {
         body: JSON.stringify({
           clientId: clientIdRef.current,
           image: screenImage,
-          type: "screen"
+          type: "screen",
         }),
       });
-      
-      console.log('Server response:', response.status);
-      
+
+      console.log("Server response:", response.status);
     } catch (error) {
       console.error("Screen capture error:", error);
-      alert('Screen capture failed: ' + (error as Error).message);
+      alert("Screen capture failed: " + (error as Error).message);
     }
   };
-  
+
   // New function to handle sampling
   const handleSample = async () => {
-    console.log('Sample button clicked');
+    console.log("Sample button clicked");
     setSamplingError(null);
     setSamplingResult(null);
     setIsSampling(true);
-    
+
     try {
       const imageSrc = getImage();
       if (!imageSrc) {
-        throw new Error('Failed to capture image for sampling');
+        throw new Error("Failed to capture image for sampling");
       }
-      
-      console.log('Sending image for sampling...');
+
+      console.log("Sending image for sampling...");
+
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch("/api/process-sample", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: imageSrc,
+          prompt: samplingPrompt,
+          sessionId: selectedSessionId,
         }),
+        signal: controller.signal,
+      }).catch((error) => {
+        clearTimeout(timeoutId);
+        if (error.name === "AbortError") {
+          throw new Error("Request timed out after 30 seconds");
+        }
+        throw error;
       });
-      
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to process sample');
+        throw new Error(errorData.error || "Failed to process sample");
       }
-      
+
       const data = await response.json();
-      console.log('Sampling response:', data);
-      
-      if (data.success && data.result && data.result.content?.type === 'text') {
+      console.log("Sampling response:", data);
+
+      if (data.success && data.result && data.result.content?.type === "text") {
         setSamplingResult(data.result.content.text);
       } else {
-        throw new Error('Invalid sampling result format');
+        throw new Error("Invalid sampling result format");
       }
     } catch (error) {
-      console.error('Sampling error:', error);
-      setSamplingError((error as Error).message || 'An unknown error occurred');
+      console.error("Sampling error:", error);
+      setSamplingError((error as Error).message || "An unknown error occurred");
     } finally {
       setIsSampling(false);
     }
@@ -131,7 +182,9 @@ export function WebcamCapture() {
     const getDevices = async () => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        const videoDevices = devices.filter(
+          (device) => device.kind === "videoinput"
+        );
         setDevices(videoDevices);
         setSelectedDevice("default");
       } catch (error) {
@@ -140,9 +193,9 @@ export function WebcamCapture() {
     };
 
     getDevices();
-    navigator.mediaDevices.addEventListener('devicechange', getDevices);
+    navigator.mediaDevices.addEventListener("devicechange", getDevices);
     return () => {
-      navigator.mediaDevices.removeEventListener('devicechange', getDevices);
+      navigator.mediaDevices.removeEventListener("devicechange", getDevices);
     };
   }, []);
 
@@ -175,13 +228,15 @@ export function WebcamCapture() {
           case "capture":
             console.log(`Capture triggered - webcam status:`, !!webcamInstance);
             if (!webcamInstance || !clientIdRef.current) {
-              const error = !webcamInstance ? "Webcam not initialized" : "Client ID not set";
+              const error = !webcamInstance
+                ? "Webcam not initialized"
+                : "Client ID not set";
               await fetch("/api/capture-error", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   clientId: clientIdRef.current,
-                  error: { message: error }
+                  error: { message: error },
                 }),
               });
               return;
@@ -195,12 +250,12 @@ export function WebcamCapture() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   clientId: clientIdRef.current,
-                  error: { message: "Failed to capture image" }
+                  error: { message: "Failed to capture image" },
                 }),
               });
               return;
             }
-            
+
             await fetch("/api/capture-result", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -226,7 +281,7 @@ export function WebcamCapture() {
                 body: JSON.stringify({
                   clientId: clientIdRef.current,
                   image: screenImage,
-                  type: "screen"
+                  type: "screen",
                 }),
               });
               console.log("Screen capture sent to server");
@@ -237,7 +292,10 @@ export function WebcamCapture() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   clientId: clientIdRef.current,
-                  error: { message: (error as Error).message || "Screen capture failed" }
+                  error: {
+                    message:
+                      (error as Error).message || "Screen capture failed",
+                  },
                 }),
               });
             }
@@ -266,23 +324,95 @@ export function WebcamCapture() {
     };
   }, [webcamInstance, getImage]); // Add getImage to dependencies
 
+  // Handle auto-update
+  useEffect(() => {
+    if (autoUpdate && updateInterval > 0) {
+      // Initial sample when auto-update is enabled
+      handleSample();
+
+      // Set up interval
+      autoUpdateIntervalRef.current = setInterval(() => {
+        handleSample();
+      }, updateInterval * 1000);
+
+      return () => {
+        if (autoUpdateIntervalRef.current) {
+          clearInterval(autoUpdateIntervalRef.current);
+          autoUpdateIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Clear interval if auto-update is disabled
+      if (autoUpdateIntervalRef.current) {
+        clearInterval(autoUpdateIntervalRef.current);
+        autoUpdateIntervalRef.current = null;
+      }
+    }
+  }, [autoUpdate, updateInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll for active sessions
+  useEffect(() => {
+    const fetchSessions = async () => {
+      try {
+        const response = await fetch("/api/sessions");
+        if (response.ok) {
+          const data = await response.json();
+          setSessions(data.sessions);
+
+          // Auto-select the most recent session if none selected
+          if (!selectedSessionId && data.sessions.length > 0) {
+            // Sort by connection time and select the most recent
+            const sortedSessions = [...data.sessions].sort(
+              (a, b) =>
+                new Date(b.connectedAt).getTime() -
+                new Date(a.connectedAt).getTime()
+            );
+            setSelectedSessionId(sortedSessions[0].id);
+          }
+
+          // Clean up selected session if it's no longer available
+          if (
+            selectedSessionId &&
+            !data.sessions.find((s: Session) => s.id === selectedSessionId)
+          ) {
+            setSelectedSessionId(null);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching sessions:", error);
+      }
+    };
+
+    // Initial fetch
+    fetchSessions();
+
+    // Poll every 2 seconds
+    sessionPollIntervalRef.current = setInterval(fetchSessions, 2000);
+
+    return () => {
+      if (sessionPollIntervalRef.current) {
+        clearInterval(sessionPollIntervalRef.current);
+      }
+    };
+  }, [selectedSessionId]);
+
   return (
     <div className="container mx-auto p-4">
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">Camera Capture</CardTitle>
-          <div className="w-full max-w-xs mx-auto mt-4">
-            <Select
-              value={selectedDevice}
-              onValueChange={setSelectedDevice}
-            >
+          <CardTitle className="text-2xl font-bold text-center">
+            mcp-webcam
+          </CardTitle>
+          <div className="w-full max-w-xs mx-auto mt-4 space-y-4">
+            <Select value={selectedDevice} onValueChange={setSelectedDevice}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select camera" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Default camera</SelectItem>
                 {devices.map((device) => {
-                  const deviceId = device.deviceId || `device-${devices.indexOf(device)}`;
+                  const deviceId =
+                    device.deviceId || `device-${devices.indexOf(device)}`;
                   return (
                     <SelectItem key={deviceId} value={deviceId}>
                       {device.label || `Camera ${devices.indexOf(device) + 1}`}
@@ -291,6 +421,58 @@ export function WebcamCapture() {
                 })}
               </SelectContent>
             </Select>
+
+            {/* Session selector */}
+            {sessions.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">MCP Session</label>
+                <Select
+                  value={selectedSessionId || ""}
+                  onValueChange={setSelectedSessionId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select MCP session" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.map((session) => {
+                      const connectedTime = new Date(session.connectedAt);
+                      const timeString = connectedTime.toLocaleTimeString();
+                      return (
+                        <SelectItem key={session.id} value={session.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={
+                                session.capabilities.sampling
+                                  ? "w-2 h-2 rounded-full bg-green-500"
+                                  : "w-2 h-2 rounded-full bg-red-500"
+                              }
+                            />
+                            <span>
+                              {session.clientInfo
+                                ? `${session.clientInfo.name} v${session.clientInfo.version}`
+                                : `Session ${session.id.slice(0, 8)}`}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ({timeString})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <div className="text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-green-500" />{" "}
+                    Supports sampling
+                  </span>
+                  <span className="inline-flex items-center gap-1 ml-3">
+                    <div className="w-2 h-2 rounded-full bg-red-500" /> No
+                    sampling
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -302,7 +484,9 @@ export function WebcamCapture() {
               videoConstraints={{
                 width: 1280,
                 height: 720,
-                ...(selectedDevice !== "default" ? { deviceId: selectedDevice } : { facingMode: "user" })
+                ...(selectedDevice !== "default"
+                  ? { deviceId: selectedDevice }
+                  : { facingMode: "user" }),
               }}
             />
             {frozenFrame && (
@@ -320,53 +504,99 @@ export function WebcamCapture() {
               </div>
             )}
           </div>
-          
-          {/* Sampling results display */}
-          {samplingResult && (
-            <div className="mt-4">
-              <Alert>
-                <AlertTitle>Analysis Result</AlertTitle>
-                <AlertDescription>
-                  {samplingResult}
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
-          
-          {samplingError && (
-            <div className="mt-4">
-              <Alert variant="destructive">
-                <AlertTitle>Sampling Error</AlertTitle>
-                <AlertDescription>
-                  {samplingError}
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
         </CardContent>
-        <CardFooter className="flex flex-wrap justify-center gap-4 pb-6">
-          <Button
-            onClick={toggleFreeze}
-            variant={frozenFrame ? "destructive" : "outline"}
-            size="lg"
-          >
-            {frozenFrame ? "Unfreeze" : "Freeze"}
-          </Button>
-          <Button
-            onClick={handleScreenCapture}
-            variant="secondary"
-            size="lg"
-          >
-            Capture Screen
-          </Button>
-          <Button
-            onClick={handleSample}
-            variant="default"
-            size="lg"
-            disabled={isSampling}
-          >
-            {isSampling ? "Analyzing..." : "What am I holding?"}
-          </Button>
+        <CardFooter className="flex flex-col gap-4 pb-6">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Button
+              onClick={toggleFreeze}
+              variant={frozenFrame ? "destructive" : "outline"}
+              size="lg"
+            >
+              {frozenFrame ? "Unfreeze" : "Freeze"}
+            </Button>
+            <Button onClick={handleScreenCapture} variant="secondary" size="lg">
+              Capture Screen
+            </Button>
+          </div>
+
+          <div className="w-full space-y-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={samplingPrompt}
+                onChange={(e) => setSamplingPrompt(e.target.value)}
+                placeholder="Enter your question..."
+                className="flex-1"
+              />
+              <Button
+                onClick={handleSample}
+                variant="default"
+                disabled={isSampling || autoUpdate}
+              >
+                {isSampling ? "Sampling..." : "Sample"}
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="auto-update"
+                  checked={autoUpdate}
+                  onCheckedChange={(checked) =>
+                    setAutoUpdate(checked as boolean)
+                  }
+                />
+                <label
+                  htmlFor="auto-update"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Auto-update
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={updateInterval}
+                  onChange={(e) =>
+                    setUpdateInterval(parseInt(e.target.value) || 30)
+                  }
+                  className="w-20"
+                  min="1"
+                  disabled={!autoUpdate}
+                />
+                <span className="text-sm text-muted-foreground">seconds</span>
+              </div>
+            </div>
+
+            {/* Sampling results display - always visible */}
+            <div className="mt-4 min-h-[80px]">
+              {samplingResult && (
+                <Alert>
+                  <AlertTitle>Analysis Result</AlertTitle>
+                  <AlertDescription>{samplingResult}</AlertDescription>
+                </Alert>
+              )}
+
+              {samplingError && (
+                <Alert variant="destructive">
+                  <AlertTitle>Sampling Error</AlertTitle>
+                  <AlertDescription>{samplingError}</AlertDescription>
+                </Alert>
+              )}
+
+              {!samplingResult && !samplingError && !isSampling && (
+                <div className="text-center text-muted-foreground text-sm p-4 border rounded-lg">
+                  Sampling results will appear here
+                </div>
+              )}
+
+              {isSampling && (
+                <div className="text-center text-muted-foreground text-sm p-4 border rounded-lg">
+                  Processing image...
+                </div>
+              )}
+            </div>
+          </div>
         </CardFooter>
       </Card>
     </div>
