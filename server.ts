@@ -4,6 +4,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { InMemoryEventStore } from "@modelcontextprotocol/sdk/examples/shared/inMemoryEventStore.js";
@@ -16,6 +17,7 @@ import {
   SamplingMessageSchema,
   CreateMessageResult,
   InitializeRequestSchema,
+  ToolAnnotationsSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -92,12 +94,28 @@ app.get("/api/health", (_, res) => {
 
 // Get active sessions
 app.get("/api/sessions", (_, res) => {
-  const sessions = Array.from(sessionMetadata.values()).map((session) => ({
-    id: session.id,
-    connectedAt: session.connectedAt.toISOString(),
-    capabilities: session.capabilities,
-    clientInfo: session.clientInfo,
-  }));
+  const sessions = Array.from(sessionMetadata.values()).map((session) => {
+    const now = Date.now();
+    const lastActivityMs = session.lastActivity.getTime();
+    const timeSinceActivity = now - lastActivityMs;
+    
+    // Consider stale after 50 seconds, but with 5 second grace period for ping responses
+    // This prevents the red->green flicker when stale checker is about to run
+    const isStale = timeSinceActivity > 50000; 
+    
+    // If we're in the "about to be pinged" window (45-50 seconds), 
+    // preemptively mark as stale to avoid flicker
+    const isPotentiallyStale = timeSinceActivity > 45000;
+    
+    return {
+      id: session.id,
+      connectedAt: session.connectedAt.toISOString(),
+      capabilities: session.capabilities,
+      clientInfo: session.clientInfo,
+      isStale: isStale || isPotentiallyStale,
+      lastActivity: session.lastActivity.toISOString(),
+    };
+  });
   res.json({ sessions });
 });
 
@@ -166,23 +184,45 @@ app.post("/api/capture-error", express.json(), (req, res) => {
 
 /** MCP Server Setup */
 
-// Function to set up server handlers
-function setupServerHandlers(server: Server) {
+// Function to set up additional server handlers that can't be done through McpServer methods
+function setupServerHandlers(mcpServer: McpServer) {
+  const server = mcpServer.server;
+
   // Capture client info during initialization
   server.setRequestHandler(InitializeRequestSchema, async (request) => {
     // Try to find the transport and session ID for this server
     const transport = serverToTransport.get(server);
-    if (transport && transport.sessionId && request.params.clientInfo) {
+    if (transport && transport.sessionId) {
       const metadata = sessionMetadata.get(transport.sessionId);
       if (metadata) {
-        metadata.clientInfo = {
-          name: request.params.clientInfo.name,
-          version: request.params.clientInfo.version,
-        };
+        // Update last activity
+        metadata.lastActivity = new Date();
+        
+        // Capture client info if provided
+        if (request.params.clientInfo) {
+          metadata.clientInfo = {
+            name: request.params.clientInfo.name,
+            version: request.params.clientInfo.version,
+          };
+        }
+        
+        // Update capabilities based on what the CLIENT supports
+        if (request.params.capabilities) {
+          // Client supports sampling if the sampling property exists
+          metadata.capabilities.sampling = !!request.params.capabilities.sampling;
+          console.error(
+            `Client capabilities for session ${transport.sessionId}:`,
+            { 
+              sampling: metadata.capabilities.sampling,
+              roots: !!request.params.capabilities.roots
+            }
+          );
+        }
+        
         sessionMetadata.set(transport.sessionId, metadata);
         console.error(
-          `Captured client info for session ${transport.sessionId}:`,
-          request.params.clientInfo
+          `Updated session info for ${transport.sessionId}:`,
+          { clientInfo: metadata.clientInfo, capabilities: metadata.capabilities }
         );
       }
     }
@@ -202,117 +242,237 @@ function setupServerHandlers(server: Server) {
     };
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Set up resource handlers
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    if (clients.size === 0) return { resources: [] };
+
     return {
-      tools: [
+      resources: [
         {
-          name: "capture",
-          description:
-            "Gets the latest picture from the webcam. You can use this " +
-            " if the human asks questions about their immediate environment,  " +
-            "if you want to see the human or to examine an object they may be " +
-            "referring to or showing you.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-            required: [],
-          },
-        },
-        {
-          name: "screenshot",
-          description: "Gets a screenshot of the current screen or window",
-          inputSchema: {
-            type: "object",
-            properties: {},
-            required: [],
-          },
+          uri: "webcam://current",
+          name: "Current view from the Webcam",
+          mimeType: "image/jpeg", // probably :)
         },
       ],
     };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    // Check if we have any connected clients
     if (0 === clients.size) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
-          },
-        ],
-      };
+      throw new Error(
+        `No clients connected. Please visit http://localhost:${getPort()} and enable your Webcam.`
+      );
+    }
+
+    // Validate URI
+    if (request.params.uri !== "webcam://current") {
+      throw new Error(
+        "Invalid resource URI. Only webcam://current is supported."
+      );
     }
 
     const clientId = Array.from(clients.keys())[0];
 
-    if (!clientId) {
-      throw new Error("No clients connected");
-    }
-
-    // Modified promise to handle both success and error cases
+    // Capture image
     const result = await new Promise<string | { error: string }>((resolve) => {
-      console.error(`Capturing for ${clientId}`);
       captureCallbacks.set(clientId, resolve);
-
       clients
         .get(clientId)
-        ?.write(`data: ${JSON.stringify({ type: request.params.name })}\n\n`);
+        ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
     });
 
     // Handle error case
     if (typeof result === "object" && "error" in result) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: `Failed to capture ${request.params.name}: ${result.error}`,
-          },
-        ],
-      };
+      throw new Error(`Failed to capture image: ${result.error}`);
     }
 
+    // Parse the data URL
     const { mimeType, base64Data } = parseDataUrl(result);
 
-    const message =
-      request.params.name === "screenshot"
-        ? "Here is the requested screenshot"
-        : "Here is the latest image from the Webcam";
-
+    // Return in the blob format
     return {
-      content: [
+      contents: [
         {
-          type: "text",
-          text: message,
-        },
-        {
-          type: "image",
-          data: base64Data,
-          mimeType: mimeType,
+          uri: request.params.uri,
+          mimeType,
+          blob: base64Data,
         },
       ],
     };
   });
 }
 
-// Create the main server instance for stdio mode
-const server = new Server(
-  {
-    name: "mcp-webcam",
-    version: "0.1.0",
-  },
-  {
-    capabilities: {
-      tools: {},
-      resources: {},
-      sampling: {}, // Enable sampling capability
+// Function to create and configure an MCP server instance
+function createMcpServer(): McpServer {
+  const mcpServer = new McpServer(
+    {
+      name: "mcp-webcam",
+      version: "0.1.0",
     },
-  }
-);
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+        sampling: {}, // Enable sampling capability
+      },
+    }
+  );
 
-// Set up handlers on the main server
-setupServerHandlers(server);
+  // Set up handlers
+  setupServerHandlers(mcpServer);
+
+  // Define tools using the modern McpServer tool method
+  mcpServer.tool(
+    "capture",
+    "Gets the latest picture from the webcam. You can use this " +
+      " if the human asks questions about their immediate environment,  " +
+      "if you want to see the human or to examine an object they may be " +
+      "referring to or showing you.",
+    {},
+    {
+      openWorldHint: true,
+      readOnlyHint: true,
+      title: "Take a Picture from the webcam",
+    },
+    async () => {
+      if (0 === clients.size) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
+            },
+          ],
+        };
+      }
+
+      const clientId = Array.from(clients.keys())[0];
+
+      if (!clientId) {
+        throw new Error("No clients connected");
+      }
+
+      // Modified promise to handle both success and error cases
+      const result = await new Promise<string | { error: string }>(
+        (resolve) => {
+          console.error(`Capturing for ${clientId}`);
+          captureCallbacks.set(clientId, resolve);
+
+          clients
+            .get(clientId)
+            ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
+        }
+      );
+
+      // Handle error case
+      if (typeof result === "object" && "error" in result) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Failed to capture: ${result.error}`,
+            },
+          ],
+        };
+      }
+
+      const { mimeType, base64Data } = parseDataUrl(result);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Here is the latest image from the Webcam",
+          },
+          {
+            type: "image",
+            data: base64Data,
+            mimeType: mimeType,
+          },
+        ],
+      };
+    }
+  );
+
+  mcpServer.tool(
+    "screenshot",
+    "Gets a screenshot of the current screen or window",
+    {},
+    {
+      openWorldHint: true,
+      readOnlyHint: true,
+      title: "Take a Screenshot",
+    },
+    async () => {
+      if (0 === clients.size) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
+            },
+          ],
+        };
+      }
+
+      const clientId = Array.from(clients.keys())[0];
+
+      if (!clientId) {
+        throw new Error("No clients connected");
+      }
+
+      // Modified promise to handle both success and error cases
+      const result = await new Promise<string | { error: string }>(
+        (resolve) => {
+          console.error(`Taking screenshot for ${clientId}`);
+          captureCallbacks.set(clientId, resolve);
+
+          clients
+            .get(clientId)
+            ?.write(`data: ${JSON.stringify({ type: "screenshot" })}\n\n`);
+        }
+      );
+
+      // Handle error case
+      if (typeof result === "object" && "error" in result) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: `Failed to capture screenshot: ${result.error}`,
+            },
+          ],
+        };
+      }
+
+      const { mimeType, base64Data } = parseDataUrl(result);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Here is the requested screenshot",
+          },
+          {
+            type: "image",
+            data: base64Data,
+            mimeType: mimeType,
+          },
+        ],
+      };
+    }
+  );
+
+  return mcpServer;
+}
+
+// Create the main server instance for stdio mode
+const server = createMcpServer();
 
 // Process sampling request from the web UI
 async function processSamplingRequest(
@@ -332,15 +492,15 @@ async function processSamplingRequest(
         throw new Error("No active MCP session found for sampling");
       }
 
-      const transportServer = transportServers.get(sessionId);
-      if (!transportServer) {
+      const transportMcpServer = transportServers.get(sessionId);
+      if (!transportMcpServer) {
         throw new Error("No server instance found for session");
       }
 
-      samplingServer = transportServer;
+      samplingServer = transportMcpServer.server;
     } else {
       // In stdio mode, use the main server
-      samplingServer = server;
+      samplingServer = server.server;
     }
 
     // Check if server has sampling capability
@@ -352,7 +512,6 @@ async function processSamplingRequest(
 
     // Create a sampling request to the client using the SDK's types
     // Send text and image as separate messages since the SDK doesn't support content arrays
-    console.error("ABOUT TO DO SAMPLING REQUEST");
     const result: CreateMessageResult = await samplingServer.createMessage({
       messages: [
         {
@@ -423,65 +582,6 @@ app.post(
   }
 );
 
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-  if (clients.size === 0) return { resources: [] };
-
-  return {
-    resources: [
-      {
-        uri: "webcam://current",
-        name: "Current view from the Webcam",
-        mimeType: "image/jpeg", // probably :)
-      },
-    ],
-  };
-});
-
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  // Check if we have any connected clients
-  if (0 === clients.size) {
-    throw new Error(
-      `No clients connected. Please visit http://localhost:${getPort()} and enable your Webcam.`
-    );
-  }
-
-  // Validate URI
-  if (request.params.uri !== "webcam://current") {
-    throw new Error(
-      "Invalid resource URI. Only webcam://current is supported."
-    );
-  }
-
-  const clientId = Array.from(clients.keys())[0];
-
-  // Capture image
-  const result = await new Promise<string | { error: string }>((resolve) => {
-    captureCallbacks.set(clientId, resolve);
-    clients
-      .get(clientId)
-      ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
-  });
-
-  // Handle error case
-  if (typeof result === "object" && "error" in result) {
-    throw new Error(`Failed to capture image: ${result.error}`);
-  }
-
-  // Parse the data URL
-  const { mimeType, base64Data } = parseDataUrl(result);
-
-  // Return in the blob format
-  return {
-    contents: [
-      {
-        uri: request.params.uri,
-        mimeType,
-        blob: base64Data,
-      },
-    ],
-  };
-});
-
 interface ParsedDataUrl {
   mimeType: string;
   base64Data: string;
@@ -501,8 +601,8 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 // Store active streaming transports
 const streamingTransports = new Map<string, StreamableHTTPServerTransport>();
 
-// Store transports with their associated server connections for sampling
-const transportServers = new Map<string, Server>();
+// Store transports with their associated server instances for sampling
+const transportServers = new Map<string, McpServer>();
 
 // Map to track server to transport mapping for client info capture
 const serverToTransport = new WeakMap<Server, StreamableHTTPServerTransport>();
@@ -511,6 +611,7 @@ const serverToTransport = new WeakMap<Server, StreamableHTTPServerTransport>();
 interface SessionMetadata {
   id: string;
   connectedAt: Date;
+  lastActivity: Date;
   capabilities: {
     sampling: boolean;
     tools: boolean;
@@ -536,6 +637,13 @@ function setupStreamingRoutes() {
     try {
       // Check for existing session ID
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
+      
+      // Update last activity for existing sessions
+      if (sessionId && sessionMetadata.has(sessionId)) {
+        const metadata = sessionMetadata.get(sessionId)!;
+        metadata.lastActivity = new Date();
+        sessionMetadata.set(sessionId, metadata);
+      }
       let transport: StreamableHTTPServerTransport;
 
       if (sessionId && streamingTransports.has(sessionId)) {
@@ -546,22 +654,7 @@ function setupStreamingRoutes() {
         const eventStore = new InMemoryEventStore();
 
         // Create a new server instance for this transport connection
-        const transportServer = new Server(
-          {
-            name: "mcp-webcam",
-            version: "0.1.0",
-          },
-          {
-            capabilities: {
-              tools: {},
-              resources: {},
-              sampling: {}, // Enable sampling capability
-            },
-          }
-        );
-
-        // Set up the same handlers on the transport-specific server
-        setupServerHandlers(transportServer);
+        const transportServer = createMcpServer();
 
         transport = new StreamableHTTPServerTransport({
           enableJsonResponse: false, // We want SSE streaming, not JSON mode
@@ -574,8 +667,9 @@ function setupStreamingRoutes() {
             sessionMetadata.set(sessionId, {
               id: sessionId,
               connectedAt: new Date(),
+              lastActivity: new Date(),
               capabilities: {
-                sampling: true, // We enable sampling for all sessions
+                sampling: false, // Will be updated when client sends capabilities
                 tools: true,
                 resources: true,
               },
@@ -587,7 +681,7 @@ function setupStreamingRoutes() {
         });
 
         // Track server to transport mapping after transport is created
-        serverToTransport.set(transportServer, transport);
+        serverToTransport.set(transportServer.server, transport);
         transport.onerror;
         // TODO -- diagnose why this handler doesn't run
         transport.onclose = () => {
@@ -662,7 +756,6 @@ function setupStreamingRoutes() {
   // Handle DELETE requests for session termination
   app.delete("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    console.error(`HEY I GOT A DELETE REQUEST FOR ${sessionId}`);
     if (!sessionId || !streamingTransports.has(sessionId)) {
       res.status(400).json({
         jsonrpc: "2.0",
@@ -712,6 +805,84 @@ function setupStreamingRoutes() {
   console.error("StreamableHTTP transport routes initialized");
 }
 
+// Periodic cleanup of stale connections
+// The stale checker runs every 20 seconds and pings connections that haven't
+// had activity in 50+ seconds. If they respond, they become active again.
+// To prevent visual flicker (red->green), the /api/sessions endpoint marks
+// connections as stale at 45 seconds, giving a 5-second buffer.
+let staleCheckInterval: NodeJS.Timeout | null = null;
+
+async function sendPingToSession(sessionId: string): Promise<boolean> {
+  try {
+    const transportServer = transportServers.get(sessionId);
+    if (!transportServer) {
+      return false;
+    }
+    
+    // Use the built-in ping method
+    await transportServer.server.ping();
+    
+    return true;
+  } catch (error) {
+    console.error(`Ping failed for session ${sessionId}:`, error);
+    return false;
+  }
+}
+
+function startStaleConnectionCheck() {
+  console.error("Starting stale connection checker with 20s interval");
+  staleCheckInterval = setInterval(async () => {
+    const now = Date.now();
+    const staleTimeout = 50000; // 50 seconds
+    const sessionsToRemove: string[] = [];
+    
+    console.error(`Checking ${sessionMetadata.size} sessions for staleness`);
+    
+    for (const [sessionId, metadata] of sessionMetadata) {
+      const timeSinceActivity = now - metadata.lastActivity.getTime();
+      console.error(`Session ${sessionId}: last activity ${Math.round(timeSinceActivity / 1000)}s ago`);
+      // First check if connection is potentially stale based on last activity
+      if (now - metadata.lastActivity.getTime() > staleTimeout) {
+        console.error(`Session ${sessionId} appears stale, sending ping...`);
+        
+        // Try to ping the client
+        const pingSuccess = await sendPingToSession(sessionId);
+        
+        if (pingSuccess) {
+          // Client responded to ping, update last activity
+          metadata.lastActivity = new Date();
+          sessionMetadata.set(sessionId, metadata);
+          console.error(`Session ${sessionId} responded to ping, keeping alive`);
+        } else {
+          // Ping failed, mark for removal
+          console.error(`Session ${sessionId} did not respond to ping, marking for removal`);
+          sessionsToRemove.push(sessionId);
+        }
+      }
+    }
+    
+    // Remove stale sessions
+    for (const sessionId of sessionsToRemove) {
+      console.error(`Removing stale session ${sessionId}`);
+      
+      // Clean up transport and server
+      const transport = streamingTransports.get(sessionId);
+      if (transport) {
+        try {
+          transport.close();
+        } catch (error) {
+          console.error(`Error closing stale transport ${sessionId}:`, error);
+        }
+      }
+      
+      // Remove from all maps
+      streamingTransports.delete(sessionId);
+      transportServers.delete(sessionId);
+      sessionMetadata.delete(sessionId);
+    }
+  }, 20000); // Check every 20 seconds
+}
+
 async function main() {
   if (isStreamingMode) {
     console.error("Starting in streaming HTTP mode");
@@ -726,10 +897,18 @@ async function main() {
         `MCP endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`
       );
     });
+    
+    // Start stale connection checker
+    startStaleConnectionCheck();
 
     // Handle graceful shutdown
     process.on("SIGINT", async () => {
       console.error("\nShutting down server...");
+      
+      // Stop stale check interval
+      if (staleCheckInterval) {
+        clearInterval(staleCheckInterval);
+      }
 
       // Close all active transports and their servers
       for (const [sessionId, transport] of streamingTransports) {

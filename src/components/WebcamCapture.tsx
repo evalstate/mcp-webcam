@@ -23,6 +23,8 @@ import { captureScreen } from "@/utils/screenCapture";
 interface Session {
   id: string;
   connectedAt: string;
+  lastActivity: string;
+  isStale: boolean;
   capabilities: {
     sampling: boolean;
     tools: boolean;
@@ -50,7 +52,7 @@ export function WebcamCapture() {
 
   // State for sampling prompt and auto-update
   const [samplingPrompt, setSamplingPrompt] =
-    useState<string>("What am I holding?");
+    useState<string>("What can you see?");
   const [autoUpdate, setAutoUpdate] = useState<boolean>(false);
   const [updateInterval, setUpdateInterval] = useState<number>(30);
   const autoUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -61,6 +63,9 @@ export function WebcamCapture() {
     null
   );
   const sessionPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Get the currently selected session
+  const selectedSession = sessions.find(s => s.id === selectedSessionId);
 
   const getImage = useCallback(() => {
     console.log("getImage called, frozenFrame state:", frozenFrame);
@@ -403,74 +408,98 @@ export function WebcamCapture() {
           <CardTitle className="text-2xl font-bold text-center">
             mcp-webcam
           </CardTitle>
-          <div className="w-full max-w-xs mx-auto mt-4 space-y-4">
-            <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select camera" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Default camera</SelectItem>
-                {devices.map((device) => {
-                  const deviceId =
-                    device.deviceId || `device-${devices.indexOf(device)}`;
-                  return (
-                    <SelectItem key={deviceId} value={deviceId}>
-                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-
-            {/* Session selector */}
-            {sessions.length > 0 && (
+          <div className="w-full max-w-2xl mx-auto mt-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Camera selector */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">MCP Session</label>
-                <Select
-                  value={selectedSessionId || ""}
-                  onValueChange={setSelectedSessionId}
-                >
+                <label className="text-sm font-medium">Camera</label>
+                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select MCP session" />
+                    <SelectValue placeholder="Select camera" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sessions.map((session) => {
-                      const connectedTime = new Date(session.connectedAt);
-                      const timeString = connectedTime.toLocaleTimeString();
+                    <SelectItem value="default">Default camera</SelectItem>
+                    {devices.map((device) => {
+                      const deviceId =
+                        device.deviceId || `device-${devices.indexOf(device)}`;
                       return (
-                        <SelectItem key={session.id} value={session.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className={
-                                session.capabilities.sampling
-                                  ? "w-2 h-2 rounded-full bg-green-500"
-                                  : "w-2 h-2 rounded-full bg-red-500"
-                              }
-                            />
-                            <span>
-                              {session.clientInfo
-                                ? `${session.clientInfo.name} v${session.clientInfo.version}`
-                                : `Session ${session.id.slice(0, 8)}`}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ({timeString})
-                            </span>
-                          </div>
+                        <SelectItem key={deviceId} value={deviceId}>
+                          {device.label || `Camera ${devices.indexOf(device) + 1}`}
                         </SelectItem>
                       );
                     })}
                   </SelectContent>
                 </Select>
-                <div className="text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500" />{" "}
-                    Supports sampling
-                  </span>
-                  <span className="inline-flex items-center gap-1 ml-3">
-                    <div className="w-2 h-2 rounded-full bg-red-500" /> No
-                    sampling
-                  </span>
-                </div>
+              </div>
+
+              {/* Session selector - always visible */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">MCP Session</label>
+                <Select
+                  value={selectedSessionId || ""}
+                  onValueChange={setSelectedSessionId}
+                  disabled={sessions.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={sessions.length === 0 ? "No connections" : "Select MCP session"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sessions.length === 0 ? (
+                      <div className="p-2 text-center text-muted-foreground text-sm">
+                        No MCP connections available
+                      </div>
+                    ) : (
+                      sessions.map((session) => {
+                        const connectedTime = new Date(session.connectedAt);
+                        const timeString = connectedTime.toLocaleTimeString();
+                        
+                        // Determine color based on status
+                        let colorClass = "bg-red-500"; // Default: stale
+                        if (!session.isStale) {
+                          if (session.capabilities.sampling) {
+                            colorClass = "bg-green-500"; // Active with sampling
+                          } else {
+                            colorClass = "bg-amber-500"; // Active without sampling
+                          }
+                        }
+                        
+                        return (
+                          <SelectItem key={session.id} value={session.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-2 h-2 rounded-full ${colorClass}`}
+                              />
+                              <span>
+                                {session.clientInfo
+                                  ? `${session.clientInfo.name} v${session.clientInfo.version}`
+                                  : `Session ${session.id.slice(0, 8)}`}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                ({timeString})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {sessions.length > 0 && (
+              <div className="text-xs text-muted-foreground text-center">
+                <span className="inline-flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500" />{" "}
+                  Active with sampling
+                </span>
+                <span className="inline-flex items-center gap-1 ml-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />{" "}
+                  Active, no sampling
+                </span>
+                <span className="inline-flex items-center gap-1 ml-3">
+                  <div className="w-2 h-2 rounded-full bg-red-500" />{" "}
+                  Stale connection
+                </span>
               </div>
             )}
           </div>
@@ -520,6 +549,13 @@ export function WebcamCapture() {
           </div>
 
           <div className="w-full space-y-4">
+            {selectedSession && !selectedSession.capabilities.sampling && (
+              <Alert className="mb-4">
+                <AlertDescription>
+                  The selected MCP session does not support sampling. Please connect a client with sampling capabilities.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="flex gap-2">
               <Input
                 type="text"
@@ -531,7 +567,8 @@ export function WebcamCapture() {
               <Button
                 onClick={handleSample}
                 variant="default"
-                disabled={isSampling || autoUpdate}
+                disabled={isSampling || autoUpdate || !selectedSession?.capabilities.sampling}
+                title={!selectedSession?.capabilities.sampling ? "Selected session does not support sampling" : ""}
               >
                 {isSampling ? "Sampling..." : "Sample"}
               </Button>
@@ -545,6 +582,7 @@ export function WebcamCapture() {
                   onCheckedChange={(checked) =>
                     setAutoUpdate(checked as boolean)
                   }
+                  disabled={!selectedSession?.capabilities.sampling}
                 />
                 <label
                   htmlFor="auto-update"
@@ -562,7 +600,7 @@ export function WebcamCapture() {
                   }
                   className="w-20"
                   min="1"
-                  disabled={!autoUpdate}
+                  disabled={!autoUpdate || !selectedSession?.capabilities.sampling}
                 />
                 <span className="text-sm text-muted-foreground">seconds</span>
               </div>

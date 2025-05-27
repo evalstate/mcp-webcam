@@ -30,7 +30,7 @@ a:hover {
 body {
   margin: 0;
   display: flex;
-  place-items: center;
+  justify-content: center;
   min-width: 320px;
   min-height: 100vh;
 }
@@ -135,4 +135,11 @@ button:focus-visible {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Fix checkbox styling to prevent button styles from affecting it */
+button[role="checkbox"] {
+  padding: 0;
+  background-color: transparent;
+  border-radius: 0.125rem;
 }
