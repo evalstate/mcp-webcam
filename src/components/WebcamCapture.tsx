@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { captureScreen } from "@/utils/screenCapture";
+import { Github } from "lucide-react";
 
 interface Session {
   id: string;
@@ -53,7 +54,7 @@ export function WebcamCapture() {
   // State for sampling prompt and auto-update
   const [samplingPrompt, setSamplingPrompt] =
     useState<string>("What can you see?");
-  const [autoUpdate, setAutoUpdate] = useState<boolean>(false);
+  const [autoUpdate, setAutoUpdate] = useState<boolean>(false); // Explicitly false
   const [updateInterval, setUpdateInterval] = useState<number>(30);
   const autoUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -65,7 +66,7 @@ export function WebcamCapture() {
   const sessionPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get the currently selected session
-  const selectedSession = sessions.find(s => s.id === selectedSessionId);
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId);
 
   const getImage = useCallback(() => {
     console.log("getImage called, frozenFrame state:", frozenFrame);
@@ -331,29 +332,41 @@ export function WebcamCapture() {
 
   // Handle auto-update
   useEffect(() => {
-    if (autoUpdate && updateInterval > 0) {
+    console.log("Auto-update effect running:", { 
+      autoUpdate, 
+      updateInterval, 
+      hasSampling: selectedSession?.capabilities.sampling,
+      sessionId: selectedSession?.id 
+    });
+    
+    // Clear any existing interval first
+    if (autoUpdateIntervalRef.current) {
+      clearInterval(autoUpdateIntervalRef.current);
+      autoUpdateIntervalRef.current = null;
+    }
+
+    // Only start auto-update if explicitly enabled by user
+    if (autoUpdate === true && updateInterval > 0 && selectedSession?.capabilities.sampling) {
+      console.log("Starting auto-update interval");
       // Initial sample when auto-update is enabled
       handleSample();
 
       // Set up interval
       autoUpdateIntervalRef.current = setInterval(() => {
+        console.log("Auto-update interval triggered");
         handleSample();
       }, updateInterval * 1000);
+    }
 
-      return () => {
-        if (autoUpdateIntervalRef.current) {
-          clearInterval(autoUpdateIntervalRef.current);
-          autoUpdateIntervalRef.current = null;
-        }
-      };
-    } else {
-      // Clear interval if auto-update is disabled
+    // Cleanup function
+    return () => {
       if (autoUpdateIntervalRef.current) {
+        console.log("Cleaning up auto-update interval");
         clearInterval(autoUpdateIntervalRef.current);
         autoUpdateIntervalRef.current = null;
       }
-    }
-  }, [autoUpdate, updateInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+    };
+  }, [autoUpdate, updateInterval, selectedSession?.id]); // Only depend on session ID, not the whole object
 
   // Poll for active sessions
   useEffect(() => {
@@ -402,18 +415,32 @@ export function WebcamCapture() {
   }, [selectedSessionId]);
 
   return (
-    <div className="container mx-auto p-4">
+    <div>
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">
-            mcp-webcam
-          </CardTitle>
-          <div className="w-full max-w-2xl mx-auto mt-4 space-y-4">
+          <div className="relative flex items-center">
+            <a
+              href="https://github.com/evalstate/mcp-webcam"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute left-0 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Github className="h-4 w-4" />
+              <span>github.com/evalstate</span>
+            </a>
+            <CardTitle className="text-xl font-bold text-center w-full">
+              mcp-webcam
+            </CardTitle>
+          </div>
+          <div className="w-full max-w-2xl mx-auto mt-4 space-y-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Camera selector */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Camera</label>
-                <Select value={selectedDevice} onValueChange={setSelectedDevice}>
+                <Select
+                  value={selectedDevice}
+                  onValueChange={setSelectedDevice}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select camera" />
                   </SelectTrigger>
@@ -424,7 +451,8 @@ export function WebcamCapture() {
                         device.deviceId || `device-${devices.indexOf(device)}`;
                       return (
                         <SelectItem key={deviceId} value={deviceId}>
-                          {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                          {device.label ||
+                            `Camera ${devices.indexOf(device) + 1}`}
                         </SelectItem>
                       );
                     })}
@@ -441,7 +469,13 @@ export function WebcamCapture() {
                   disabled={sessions.length === 0}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={sessions.length === 0 ? "No connections" : "Select MCP session"} />
+                    <SelectValue
+                      placeholder={
+                        sessions.length === 0
+                          ? "No connections"
+                          : "Select MCP session"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {sessions.length === 0 ? (
@@ -452,7 +486,7 @@ export function WebcamCapture() {
                       sessions.map((session) => {
                         const connectedTime = new Date(session.connectedAt);
                         const timeString = connectedTime.toLocaleTimeString();
-                        
+
                         // Determine color based on status
                         let colorClass = "bg-red-500"; // Default: stale
                         if (!session.isStale) {
@@ -462,7 +496,7 @@ export function WebcamCapture() {
                             colorClass = "bg-amber-500"; // Active without sampling
                           }
                         }
-                        
+
                         return (
                           <SelectItem key={session.id} value={session.id}>
                             <div className="flex items-center gap-2">
@@ -489,22 +523,22 @@ export function WebcamCapture() {
             {sessions.length > 0 && (
               <div className="text-xs text-muted-foreground text-center">
                 <span className="inline-flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-green-500" />{" "}
-                  Active with sampling
+                  <div className="w-2 h-2 rounded-full bg-green-500" /> Active
+                  with sampling
                 </span>
                 <span className="inline-flex items-center gap-1 ml-3">
-                  <div className="w-2 h-2 rounded-full bg-amber-500" />{" "}
-                  Active, no sampling
+                  <div className="w-2 h-2 rounded-full bg-amber-500" /> Active,
+                  no sampling
                 </span>
                 <span className="inline-flex items-center gap-1 ml-3">
-                  <div className="w-2 h-2 rounded-full bg-red-500" />{" "}
-                  Stale connection
+                  <div className="w-2 h-2 rounded-full bg-red-500" /> Stale
+                  connection
                 </span>
               </div>
             )}
           </div>
         </CardHeader>
-        <CardContent className="p-6">
+        <CardContent className="px-6 pt-3 pb-6">
           <div className="rounded-lg overflow-hidden border border-border relative">
             <Webcam
               ref={(webcam) => setWebcamInstance(webcam)}
@@ -525,34 +559,24 @@ export function WebcamCapture() {
                 className="absolute inset-0 w-full h-full object-cover"
               />
             )}
-            {frozenFrame && (
-              <div className="absolute top-4 right-4">
-                <div className="bg-red-500 text-white px-3 py-1 rounded-full text-sm">
-                  Frozen
-                </div>
-              </div>
-            )}
+            <div className="absolute top-4 right-4">
+              <Button
+                onClick={toggleFreeze}
+                variant={frozenFrame ? "destructive" : "outline"}
+                size="sm"
+              >
+                {frozenFrame ? "Unfreeze" : "Freeze"}
+              </Button>
+            </div>
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4 pb-6">
-          <div className="flex flex-wrap justify-center gap-4">
-            <Button
-              onClick={toggleFreeze}
-              variant={frozenFrame ? "destructive" : "outline"}
-              size="lg"
-            >
-              {frozenFrame ? "Unfreeze" : "Freeze"}
-            </Button>
-            <Button onClick={handleScreenCapture} variant="secondary" size="lg">
-              Capture Screen
-            </Button>
-          </div>
-
           <div className="w-full space-y-4">
             {selectedSession && !selectedSession.capabilities.sampling && (
               <Alert className="mb-4">
                 <AlertDescription>
-                  The selected MCP session does not support sampling. Please connect a client with sampling capabilities.
+                  The selected MCP session does not support sampling. Please
+                  connect a client with sampling capabilities.
                 </AlertDescription>
               </Alert>
             )}
@@ -567,44 +591,21 @@ export function WebcamCapture() {
               <Button
                 onClick={handleSample}
                 variant="default"
-                disabled={isSampling || autoUpdate || !selectedSession?.capabilities.sampling}
-                title={!selectedSession?.capabilities.sampling ? "Selected session does not support sampling" : ""}
+                disabled={
+                  isSampling ||
+                  autoUpdate ||
+                  !selectedSession?.capabilities.sampling
+                }
+                title={
+                  !selectedSession?.capabilities.sampling
+                    ? "Selected session does not support sampling"
+                    : ""
+                }
               >
                 {isSampling ? "Sampling..." : "Sample"}
               </Button>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="auto-update"
-                  checked={autoUpdate}
-                  onCheckedChange={(checked) =>
-                    setAutoUpdate(checked as boolean)
-                  }
-                  disabled={!selectedSession?.capabilities.sampling}
-                />
-                <label
-                  htmlFor="auto-update"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Auto-update
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  value={updateInterval}
-                  onChange={(e) =>
-                    setUpdateInterval(parseInt(e.target.value) || 30)
-                  }
-                  className="w-20"
-                  min="1"
-                  disabled={!autoUpdate || !selectedSession?.capabilities.sampling}
-                />
-                <span className="text-sm text-muted-foreground">seconds</span>
-              </div>
-            </div>
 
             {/* Sampling results display - always visible */}
             <div className="mt-4 min-h-[80px]">
@@ -633,6 +634,46 @@ export function WebcamCapture() {
                   Processing image...
                 </div>
               )}
+            </div>
+
+            {/* Auto-update and Screen Capture controls */}
+            <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="auto-update"
+                    checked={autoUpdate}
+                    onCheckedChange={(checked) =>
+                      setAutoUpdate(checked as boolean)
+                    }
+                    disabled={!selectedSession?.capabilities.sampling}
+                  />
+                  <label
+                    htmlFor="auto-update"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Auto-update
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={updateInterval}
+                    onChange={(e) =>
+                      setUpdateInterval(parseInt(e.target.value) || 30)
+                    }
+                    className="w-20"
+                    min="1"
+                    disabled={
+                      !autoUpdate || !selectedSession?.capabilities.sampling
+                    }
+                  />
+                  <span className="text-sm text-muted-foreground">seconds</span>
+                </div>
+              </div>
+              <Button onClick={handleScreenCapture} variant="secondary">
+                Test Screen Capture
+              </Button>
             </div>
           </div>
         </CardFooter>
