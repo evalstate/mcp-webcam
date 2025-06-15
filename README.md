@@ -1,6 +1,6 @@
 # ⭐⭐ mcp-webcam 0.2.0 - the 50 Star Update ⭐⭐ 
 
-In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!! This lets multiple clients connect, and you can select which you would like to use for sampling. You can try this straightaway at `https://evalstate-mcp-webcam.hf.space/`. Only connect a Sampling enabled client if you are happy to receive others sampling requests ;)
+In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!! This lets multiple clients connect, and you can select which you would like to use for sampling. You can try this straightaway (sampling only) at `https://evalstate-mcp-webcam.hf.space/`. Only connect a Sampling enabled client if you are happy to receive others sampling requests ;)
 
 ![mcp_webcam_020_thumb](https://github.com/user-attachments/assets/041e3091-71e5-4aa1-9170-ee20177485ef)
 
