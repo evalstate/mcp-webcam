@@ -125,8 +125,8 @@ export function WebcamCapture() {
     }
   };
 
-  // New function to handle sampling
-  const handleSample = async () => {
+  // New function to handle sampling with callback for auto-update
+  const handleSample = async (onComplete?: () => void) => {
     console.log("Sample button clicked");
     setSamplingError(null);
     setSamplingResult(null);
@@ -173,6 +173,10 @@ export function WebcamCapture() {
 
       if (data.success && data.result && data.result.content?.type === "text") {
         setSamplingResult(data.result.content.text);
+        // Call the completion callback on success
+        if (onComplete) {
+          onComplete();
+        }
       } else {
         throw new Error("Invalid sampling result format");
       }
@@ -330,7 +334,7 @@ export function WebcamCapture() {
     };
   }, [webcamInstance, getImage]); // Add getImage to dependencies
 
-  // Handle auto-update
+  // Handle auto-update with recursive timeout after successful requests
   useEffect(() => {
     console.log("Auto-update effect running:", { 
       autoUpdate, 
@@ -339,30 +343,47 @@ export function WebcamCapture() {
       sessionId: selectedSession?.id 
     });
     
-    // Clear any existing interval first
+    // Clear any existing timer first
     if (autoUpdateIntervalRef.current) {
-      clearInterval(autoUpdateIntervalRef.current);
+      clearTimeout(autoUpdateIntervalRef.current);
       autoUpdateIntervalRef.current = null;
     }
 
+    // Recursive function to handle auto-update
+    const scheduleNextUpdate = () => {
+      // Ensure minimum 5 seconds between requests
+      const delayMs = Math.max(updateInterval * 1000, 5000);
+      
+      autoUpdateIntervalRef.current = setTimeout(() => {
+        if (autoUpdate === true && selectedSession?.capabilities.sampling) {
+          console.log("Auto-update triggered after", delayMs, "ms");
+          handleSample(() => {
+            // On successful completion, schedule the next update
+            if (autoUpdate === true) {
+              scheduleNextUpdate();
+            }
+          });
+        }
+      }, delayMs);
+    };
+
     // Only start auto-update if explicitly enabled by user
     if (autoUpdate === true && updateInterval > 0 && selectedSession?.capabilities.sampling) {
-      console.log("Starting auto-update interval");
+      console.log("Starting auto-update");
       // Initial sample when auto-update is enabled
-      handleSample();
-
-      // Set up interval
-      autoUpdateIntervalRef.current = setInterval(() => {
-        console.log("Auto-update interval triggered");
-        handleSample();
-      }, updateInterval * 1000);
+      handleSample(() => {
+        // Schedule next update after successful initial sample
+        if (autoUpdate === true) {
+          scheduleNextUpdate();
+        }
+      });
     }
 
     // Cleanup function
     return () => {
       if (autoUpdateIntervalRef.current) {
-        console.log("Cleaning up auto-update interval");
-        clearInterval(autoUpdateIntervalRef.current);
+        console.log("Cleaning up auto-update timer");
+        clearTimeout(autoUpdateIntervalRef.current);
         autoUpdateIntervalRef.current = null;
       }
     };
@@ -589,7 +610,7 @@ export function WebcamCapture() {
                 className="flex-1"
               />
               <Button
-                onClick={handleSample}
+                onClick={() => handleSample()}
                 variant="default"
                 disabled={
                   isSampling ||
