@@ -1,8 +1,8 @@
-# mcp-webcam 0.2.0 - the ⭐⭐ 50 Star Update ⭐⭐ 
+# ⭐⭐ mcp-webcam 0.2.0 - the 50 Star Update ⭐⭐ 
 
 In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!!
 
-![mcp_webcam_020_small](https://github.com/user-attachments/assets/5d3884aa-ed66-42c6-b0cb-ae5eac17cf52)
+![mcp_webcam_020_thumb](https://github.com/user-attachments/assets/041e3091-71e5-4aa1-9170-ee20177485ef)
 
 If we get to 100 stars I'll add even more features 😊.
 
