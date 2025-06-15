@@ -7,7 +7,7 @@ import { parseArgs } from "node:util";
 import { TransportFactory, type TransportType } from "./transport/transport-factory.js";
 import { StdioTransport } from "./transport/stdio-transport.js";
 import { StreamableHttpTransport } from "./transport/streamable-http-transport.js";
-import { createWebcamServer, clients, captureCallbacks } from "./webcam-server-factory.js";
+import { createWebcamServer, clients, captureCallbacks, getUserClients, getUserCallbacks } from "./webcam-server-factory.js";
 import type { BaseTransport } from "./transport/base-transport.js";
 import type { CreateMessageResult } from "@modelcontextprotocol/sdk/types.js";
 
@@ -74,6 +74,7 @@ function getPort(): number {
 }
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : getPort();
+const HOSTNAME = process.env.HOSTNAME || 'localhost';
 
 // Important: Serve the dist directory directly
 app.use(express.static(__dirname));
@@ -84,41 +85,45 @@ app.get("/api/health", (_, res) => {
 });
 
 // Get active sessions
-app.get("/api/sessions", (_, res) => {
+app.get("/api/sessions", (req, res) => {
+  const user = (req.query.user as string) || 'default';
   if (!transport) {
     res.json({ sessions: [] });
     return;
   }
   
-  const sessions = transport.getSessions().map((session) => {
-    const now = Date.now();
-    const lastActivityMs = session.lastActivity.getTime();
-    const timeSinceActivity = now - lastActivityMs;
-    
-    // Consider stale after 50 seconds, but with 5 second grace period for ping responses
-    // This prevents the red->green flicker when stale checker is about to run
-    const isStale = timeSinceActivity > 50000; 
-    
-    // If we're in the "about to be pinged" window (45-50 seconds), 
-    // preemptively mark as stale to avoid flicker
-    const isPotentiallyStale = timeSinceActivity > 45000;
-    
-    return {
-      id: session.id,
-      connectedAt: session.connectedAt.toISOString(),
-      capabilities: session.capabilities,
-      clientInfo: session.clientInfo,
-      isStale: isStale || isPotentiallyStale,
-      lastActivity: session.lastActivity.toISOString(),
-    };
-  });
+  const sessions = transport.getSessions()
+    .filter((session) => (session.user || 'default') === user)
+    .map((session) => {
+      const now = Date.now();
+      const lastActivityMs = session.lastActivity.getTime();
+      const timeSinceActivity = now - lastActivityMs;
+      
+      // Consider stale after 50 seconds, but with 5 second grace period for ping responses
+      // This prevents the red->green flicker when stale checker is about to run
+      const isStale = timeSinceActivity > 50000; 
+      
+      // If we're in the "about to be pinged" window (45-50 seconds), 
+      // preemptively mark as stale to avoid flicker
+      const isPotentiallyStale = timeSinceActivity > 45000;
+      
+      return {
+        id: session.id,
+        connectedAt: session.connectedAt.toISOString(),
+        capabilities: session.capabilities,
+        clientInfo: session.clientInfo,
+        isStale: isStale || isPotentiallyStale,
+        lastActivity: session.lastActivity.toISOString(),
+      };
+    });
   res.json({ sessions });
 });
 
 // Note: captureCallbacks is now imported from webcam-server-factory.ts
 
 app.get("/api/events", (req, res) => {
-  console.error("New SSE connection request");
+  const user = (req.query.user as string) || 'default';
+  console.error(`New SSE connection request for user: ${user}`);
 
   // SSE setup
   res.setHeader("Content-Type", "text/event-stream");
@@ -128,9 +133,10 @@ app.get("/api/events", (req, res) => {
   // Generate a unique client ID
   const clientId = Math.random().toString(36).substring(7);
 
-  // Add this client to our connected clients
-  clients.set(clientId, res);
-  console.error("Client connected - DEBUG INFO:", clientId);
+  // Add this client to the user's connected clients
+  const userClients = getUserClients(user);
+  userClients.set(clientId, res);
+  console.error(`Client connected - DEBUG INFO: ${clientId} (user: ${user})`);
 
   // Send initial connection message
   const connectMessage = JSON.stringify({ type: "connected", clientId });
@@ -138,18 +144,20 @@ app.get("/api/events", (req, res) => {
 
   // Remove client when they disconnect
   req.on("close", () => {
-    clients.delete(clientId);
-    console.error("Client disconnected - DEBUG INFO:", clientId);
+    userClients.delete(clientId);
+    console.error(`Client disconnected - DEBUG INFO: ${clientId} (user: ${user})`);
   });
 });
 
 app.post("/api/capture-result", (req, res) => {
+  const user = (req.query.user as string) || 'default';
   const { clientId, image } = req.body;
-  const callback = captureCallbacks.get(clientId);
+  const userCallbacks = getUserCallbacks(user);
+  const callback = userCallbacks.get(clientId);
 
   if (callback) {
     callback(image);
-    captureCallbacks.delete(clientId);
+    userCallbacks.delete(clientId);
   }
 
   res.json({ success: true });
@@ -157,12 +165,14 @@ app.post("/api/capture-result", (req, res) => {
 
 // Add this near other endpoint definitions
 app.post("/api/capture-error", (req, res) => {
+  const user = (req.query.user as string) || 'default';
   const { clientId, error } = req.body;
-  const callback = captureCallbacks.get(clientId);
+  const userCallbacks = getUserCallbacks(user);
+  const callback = userCallbacks.get(clientId);
 
   if (callback) {
     callback({ error: error.message || "Unknown error occurred" });
-    captureCallbacks.delete(clientId);
+    userCallbacks.delete(clientId);
   }
 
   res.json({ success: true });
@@ -246,6 +256,7 @@ async function processSamplingRequest(
 app.post(
   "/api/process-sample",
   async (req, res) => {
+    const user = (req.query.user as string) || 'default';
     const { image, prompt, sessionId } = req.body;
 
     if (!image) {
@@ -254,18 +265,18 @@ app.post(
     }
 
     try {
-      // In streaming mode, use provided sessionId or fall back to first available
+      // In streaming mode, use provided sessionId or fall back to first available for this user
       let selectedSessionId: string | undefined = sessionId;
       if (isStreamingMode && transport) {
-        const sessions = transport.getSessions();
+        const sessions = transport.getSessions().filter(s => (s.user || 'default') === user);
         if (!selectedSessionId || !sessions.find(s => s.id === selectedSessionId)) {
-          // Fall back to the most recently connected session
+          // Fall back to the most recently connected session for this user
           const sortedSessions = sessions.sort(
             (a, b) => b.connectedAt.getTime() - a.connectedAt.getTime()
           );
           selectedSessionId = sortedSessions[0]?.id;
         }
-        console.error(`Using session ${selectedSessionId} for sampling`);
+        console.error(`Using session ${selectedSessionId} for sampling (user: ${user})`);
       }
 
       const result = await processSamplingRequest(
@@ -318,10 +329,10 @@ async function main() {
     });
 
     // Now start the Express server
-    app.listen(PORT, () => {
-      console.error(`Server running at http://localhost:${PORT}`);
+    app.listen(PORT, HOSTNAME, () => {
+      console.error(`Server running at http://${HOSTNAME}:${PORT}`);
       console.error(
-        `MCP endpoint: POST/GET/DELETE http://localhost:${PORT}/mcp`
+        `MCP endpoint: POST/GET/DELETE http://${HOSTNAME}:${PORT}/mcp`
       );
     });
 
@@ -341,8 +352,8 @@ async function main() {
     console.error("Starting in STDIO mode");
 
     // Start the Express server for the web UI even in stdio mode
-    app.listen(PORT, () => {
-      console.error(`Web UI running at http://localhost:${PORT}`);
+    app.listen(PORT, HOSTNAME, () => {
+      console.error(`Web UI running at http://${HOSTNAME}:${PORT}`);
     });
 
     // Create and initialize STDIO transport

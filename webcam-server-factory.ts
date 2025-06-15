@@ -6,12 +6,12 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ServerFactory } from "./transport/base-transport.js";
 
-// Store clients with their resolve functions
-export let clients = new Map<string, any>();
+// Store clients with their resolve functions, grouped by user
+export let clients = new Map<string, Map<string, any>>(); // user -> clientId -> response
 export let captureCallbacks = new Map<
   string,
-  (response: string | { error: string }) => void
->();
+  Map<string, (response: string | { error: string }) => void>
+>(); // user -> clientId -> callback
 
 interface ParsedDataUrl {
   mimeType: string;
@@ -33,10 +33,29 @@ function getPort(): number {
   return process.env.PORT ? parseInt(process.env.PORT) : 3333;
 }
 
+function getHostname(): string {
+  return process.env.HOSTNAME || 'localhost';
+}
+
+// Helper functions for user-scoped client management
+export function getUserClients(user: string): Map<string, any> {
+  if (!clients.has(user)) {
+    clients.set(user, new Map());
+  }
+  return clients.get(user)!;
+}
+
+export function getUserCallbacks(user: string): Map<string, (response: string | { error: string }) => void> {
+  if (!captureCallbacks.has(user)) {
+    captureCallbacks.set(user, new Map());
+  }
+  return captureCallbacks.get(user)!;
+}
+
 /**
  * Factory function to create and configure an MCP server instance with webcam capabilities
  */
-export const createWebcamServer: ServerFactory = async () => {
+export const createWebcamServer: ServerFactory = async (user: string = 'default') => {
   const mcpServer = new McpServer(
     {
       name: "mcp-webcam",
@@ -53,7 +72,8 @@ export const createWebcamServer: ServerFactory = async () => {
 
   // Set up resource handlers
   mcpServer.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    if (clients.size === 0) return { resources: [] };
+    const userClients = getUserClients(user);
+    if (userClients.size === 0) return { resources: [] };
 
     return {
       resources: [
@@ -67,10 +87,11 @@ export const createWebcamServer: ServerFactory = async () => {
   });
 
   mcpServer.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    // Check if we have any connected clients
-    if (0 === clients.size) {
+    // Check if we have any connected clients for this user
+    const userClients = getUserClients(user);
+    if (userClients.size === 0) {
       throw new Error(
-        `No clients connected. Please visit http://localhost:${getPort()} and enable your Webcam.`
+        `No clients connected for user '${user}'. Please visit http://${getHostname()}:${getPort()}?user=${user} and enable your Webcam.`
       );
     }
 
@@ -81,12 +102,13 @@ export const createWebcamServer: ServerFactory = async () => {
       );
     }
 
-    const clientId = Array.from(clients.keys())[0];
+    const clientId = Array.from(userClients.keys())[0];
+    const userCallbacks = getUserCallbacks(user);
 
     // Capture image
     const result = await new Promise<string | { error: string }>((resolve) => {
-      captureCallbacks.set(clientId, resolve);
-      clients
+      userCallbacks.set(clientId, resolve);
+      userClients
         .get(clientId)
         ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
     });
@@ -125,31 +147,34 @@ export const createWebcamServer: ServerFactory = async () => {
       title: "Take a Picture from the webcam",
     },
     async () => {
-      if (0 === clients.size) {
+      const userClients = getUserClients(user);
+      if (userClients.size === 0) {
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
+              text: `Have you opened your web browser?. Direct the human to go to http://${getHostname()}:${getPort()}?user=${user}, switch on their webcam and try again.`,
             },
           ],
         };
       }
 
-      const clientId = Array.from(clients.keys())[0];
+      const clientId = Array.from(userClients.keys())[0];
 
       if (!clientId) {
         throw new Error("No clients connected");
       }
 
+      const userCallbacks = getUserCallbacks(user);
+
       // Modified promise to handle both success and error cases
       const result = await new Promise<string | { error: string }>(
         (resolve) => {
-          console.error(`Capturing for ${clientId}`);
-          captureCallbacks.set(clientId, resolve);
+          console.error(`Capturing for ${clientId} (user: ${user})`);
+          userCallbacks.set(clientId, resolve);
 
-          clients
+          userClients
             .get(clientId)
             ?.write(`data: ${JSON.stringify({ type: "capture" })}\n\n`);
         }
@@ -196,31 +221,34 @@ export const createWebcamServer: ServerFactory = async () => {
       title: "Take a Screenshot",
     },
     async () => {
-      if (0 === clients.size) {
+      const userClients = getUserClients(user);
+      if (userClients.size === 0) {
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `Have you opened your web browser?. Direct the human to go to http://localhost:${getPort()}, switch on their webcam and try again.`,
+              text: `Have you opened your web browser?. Direct the human to go to http://${getHostname()}:${getPort()}?user=${user}, switch on their webcam and try again.`,
             },
           ],
         };
       }
 
-      const clientId = Array.from(clients.keys())[0];
+      const clientId = Array.from(userClients.keys())[0];
 
       if (!clientId) {
         throw new Error("No clients connected");
       }
 
+      const userCallbacks = getUserCallbacks(user);
+
       // Modified promise to handle both success and error cases
       const result = await new Promise<string | { error: string }>(
         (resolve) => {
-          console.error(`Taking screenshot for ${clientId}`);
-          captureCallbacks.set(clientId, resolve);
+          console.error(`Taking screenshot for ${clientId} (user: ${user})`);
+          userCallbacks.set(clientId, resolve);
 
-          clients
+          userClients
             .get(clientId)
             ?.write(`data: ${JSON.stringify({ type: "screenshot" })}\n\n`);
         }

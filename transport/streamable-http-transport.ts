@@ -91,6 +91,9 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
 
   private async handlePostRequest(req: Request, res: Response, sessionId?: string): Promise<void> {
     try {
+      // Extract user parameter
+      const user = (req.query.user as string) || 'default';
+
       // Reject new connections during shutdown
       if (!sessionId && this.isShuttingDown) {
         res.status(503).json({
@@ -122,7 +125,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
         transport = existingSession.transport;
       } else if (!sessionId && isInitializeRequest(req.body)) {
         // Create new session only for initialization requests
-        transport = await this.createSession();
+        transport = await this.createSession(user);
       } else if (!sessionId) {
         // No session ID and not an initialization request
         res.status(400).json({
@@ -228,9 +231,9 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
     await this.removeSession(sessionId);
   }
 
-  private async createSession(): Promise<StreamableHTTPServerTransport> {
+  private async createSession(user: string = 'default'): Promise<StreamableHTTPServerTransport> {
     // Create server instance using factory
-    const server = await this.serverFactory();
+    const server = await this.serverFactory(user);
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -245,6 +248,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
             id: sessionId,
             connectedAt: new Date(),
             lastActivity: new Date(),
+            user: user,
             capabilities: {},
           },
         };

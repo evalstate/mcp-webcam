@@ -31,7 +31,33 @@ For **Streaming HTTP** mode: `npx @llmindset/mcp-webcam --streaming`. This will 
 
 ### Docker
 
-You can run `mcp-webcam` using Docker. Run with `docker run -p 3333:3333 ghcr.io/evalstate/mcp-webcam:latest`.
+You can run `mcp-webcam` using Docker. By default, it starts in **streaming mode**:
+
+```bash
+docker run -p 3333:3333 ghcr.io/evalstate/mcp-webcam:latest
+```
+
+#### Environment Variables
+
+- `MCP_TRANSPORT_MODE` - Set to `stdio` for STDIO mode, defaults to `streaming`
+- `PORT` - The port to run on (default: `3333`)
+- `HOSTNAME` - The hostname/IP to bind to (default: `localhost`)
+
+#### Examples
+
+```bash
+# STDIO mode
+docker run -p 3333:3333 -e MCP_TRANSPORT_MODE=stdio ghcr.io/evalstate/mcp-webcam:latest
+
+# Custom port
+docker run -p 8080:8080 -e PORT=8080 ghcr.io/evalstate/mcp-webcam:latest
+
+# Bind to all interfaces (useful for Docker/cloud deployments)
+docker run -p 3333:3333 -e HOSTNAME=0.0.0.0 ghcr.io/evalstate/mcp-webcam:latest
+
+# Custom hostname and port
+docker run -p 8080:8080 -e HOSTNAME=0.0.0.0 -e PORT=8080 ghcr.io/evalstate/mcp-webcam:latest
+```
 
 ## Clients
 

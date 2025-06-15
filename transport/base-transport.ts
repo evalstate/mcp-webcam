@@ -5,7 +5,7 @@ import type { Express } from 'express';
  * Factory function to create server instances
  * This should be provided during transport construction to enable per-connection server instances
  */
-export type ServerFactory = () => Promise<McpServer>;
+export type ServerFactory = (user?: string) => Promise<McpServer>;
 
 export interface TransportOptions {
   port?: number;
@@ -18,6 +18,7 @@ export interface SessionMetadata {
   id: string;
   connectedAt: Date;
   lastActivity: Date;
+  user?: string;
   clientInfo?: {
     name: string;
     version: string;

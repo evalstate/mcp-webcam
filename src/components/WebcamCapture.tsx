@@ -42,6 +42,9 @@ export function WebcamCapture() {
   const clientIdRef = useRef<string | null>(null);
   const [_, setClientId] = useState<string | null>(null);
 
+  // Extract user parameter from URL
+  const userParam = new URLSearchParams(window.location.search).get('user') || 'default';
+
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
@@ -108,7 +111,7 @@ export function WebcamCapture() {
         return;
       }
 
-      const response = await fetch("/api/capture-result", {
+      const response = await fetch(`/api/capture-result?user=${encodeURIComponent(userParam)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,7 +147,7 @@ export function WebcamCapture() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const response = await fetch("/api/process-sample", {
+      const response = await fetch(`/api/process-sample?user=${encodeURIComponent(userParam)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -212,7 +215,7 @@ export function WebcamCapture() {
   useEffect(() => {
     console.error("Setting up EventSource...");
 
-    const eventSource = new EventSource("/api/events");
+    const eventSource = new EventSource(`/api/events?user=${encodeURIComponent(userParam)}`);
 
     eventSource.onopen = () => {
       console.error("SSE connection opened successfully");
@@ -241,7 +244,7 @@ export function WebcamCapture() {
               const error = !webcamInstance
                 ? "Webcam not initialized"
                 : "Client ID not set";
-              await fetch("/api/capture-error", {
+              await fetch(`/api/capture-error?user=${encodeURIComponent(userParam)}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -255,7 +258,7 @@ export function WebcamCapture() {
             console.log("Taking webcam image...");
             const imageSrc = getImage();
             if (!imageSrc) {
-              await fetch("/api/capture-error", {
+              await fetch(`/api/capture-error?user=${encodeURIComponent(userParam)}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -266,7 +269,7 @@ export function WebcamCapture() {
               return;
             }
 
-            await fetch("/api/capture-result", {
+            await fetch(`/api/capture-result?user=${encodeURIComponent(userParam)}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -285,7 +288,7 @@ export function WebcamCapture() {
             }
             try {
               const screenImage = await captureScreen();
-              await fetch("/api/capture-result", {
+              await fetch(`/api/capture-result?user=${encodeURIComponent(userParam)}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -297,7 +300,7 @@ export function WebcamCapture() {
               console.log("Screen capture sent to server");
             } catch (error) {
               console.error("Screen capture failed:", error);
-              await fetch("/api/capture-error", {
+              await fetch(`/api/capture-error?user=${encodeURIComponent(userParam)}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -332,7 +335,7 @@ export function WebcamCapture() {
       console.error("Cleaning up EventSource connection");
       eventSource.close();
     };
-  }, [webcamInstance, getImage]); // Add getImage to dependencies
+  }, [webcamInstance, getImage, userParam]); // Add userParam to dependencies
 
   // Handle auto-update with recursive timeout after successful requests
   useEffect(() => {
@@ -393,7 +396,7 @@ export function WebcamCapture() {
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const response = await fetch("/api/sessions");
+        const response = await fetch(`/api/sessions?user=${encodeURIComponent(userParam)}`);
         if (response.ok) {
           const data = await response.json();
           setSessions(data.sessions);
@@ -433,7 +436,7 @@ export function WebcamCapture() {
         clearInterval(sessionPollIntervalRef.current);
       }
     };
-  }, [selectedSessionId]);
+  }, [selectedSessionId, userParam]);
 
   return (
     <div>
@@ -483,7 +486,9 @@ export function WebcamCapture() {
 
               {/* Session selector - always visible */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">MCP Session</label>
+                <label className="text-sm font-medium">
+                  {userParam === 'default' ? 'MCP Session' : `MCP Session (${userParam})`}
+                </label>
                 <Select
                   value={selectedSessionId || ""}
                   onValueChange={setSelectedSessionId}
