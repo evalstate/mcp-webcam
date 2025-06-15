@@ -1,8 +1,8 @@
-# mcp-webcam 0.2.0 - the 50 Star Update
+# mcp-webcam 0.2.0 - the ⭐⭐ 50 Star Update ⭐⭐ 
 
 In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!!
 
-![mcp_webcam_020_small](https://github.com/user-attachments/assets/515d25b2-0f95-40e0-88e8-07ba9fb2c5ff)
+![mcp_webcam_020_small](https://github.com/user-attachments/assets/5d3884aa-ed66-42c6-b0cb-ae5eac17cf52)
 
 If we get to 100 stars I'll add even more features 😊.
 
@@ -52,6 +52,8 @@ Press the "What am I holding?" button To send a Sampling request to the Client, 
 > Claude Desktop does not currently support Sampling. If you want a Client that can handle multi-modal sampling request, try https://github.com/evalstate/fast-agent/
 
 ## Other notes
+
+![mcp_webcam_020_small](https://github.com/user-attachments/assets/515d25b2-0f95-40e0-88e8-07ba9fb2c5ff)
 
 That's it really. 
 
