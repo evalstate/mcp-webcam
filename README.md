@@ -1,6 +1,6 @@
 # ⭐⭐ mcp-webcam 0.2.0 - the 50 Star Update ⭐⭐ 
 
-In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!!
+In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!! This lets multiple clients connect, and you can select which you would like to use for sampling.
 
 ![mcp_webcam_020_thumb](https://github.com/user-attachments/assets/041e3091-71e5-4aa1-9170-ee20177485ef)
 
@@ -19,6 +19,8 @@ MCP Server that provides access to your WebCam. Provides `capture` and `screensh
 
 ## Installation and Running
 
+### NPX
+
 Install a recent version of [NodeJS](https://nodejs.org/en/download) for your platform. The NPM package is `@llmindset/mcp-webcam`. 
 
 To start in **STDIO** mode: `npx @llmindset/mcp-webcam`. This starts the `mcp-webcam` UI on port 3333. Point your browser at `http://localhost:3333` to get started.
@@ -27,11 +29,17 @@ To change the port: `npx @llmindset/mcp-webcam 9999`. This starts `mcp-webcam` t
 
 For **Streaming HTTP** mode: `npx @llmindset/mcp-webcam --streaming`. This will make the UI available at `http://localhost:3333` and the MCP Server available at `http://localhost:3333/mcp`.
 
+### Docker
+
+You can run `mcp-webcam` using Docker. Run with `docker run -p 3333:3333 ghcr.io/evalstate/mcp-webcam:latest`.
+
+## Clients
+
 If you want a Client that supports sampling try:
 
 ### fast-agent
 
-Start the server in streaming mode, install [`uv`](https://docs.astral.sh/uv/) and connect with:
+Start the `mcp-webcam` in streaming mode, install [`uv`](https://docs.astral.sh/uv/) and connect with:
 
 `uvx fast-agent-mcp go --url http://localhost:3333/mcp`
 
@@ -47,7 +55,7 @@ webcam_local:
 
 ### VSCode
 
-VSCode versions 1.101.0 and above support MCP Sampling. Simply add `http://localhost:3333/mcp` as an MCP Server to get started.
+VSCode versions 1.101.0 and above support MCP Sampling. Simply start `mcp-webcam` in streaming mode, and add `http://localhost:3333/mcp` as an MCP Server to get started.
 
 ### Claude Desktop
 
