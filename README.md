@@ -4,21 +4,26 @@ In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now suppo
 
 ![mcp_webcam_020_thumb](https://github.com/user-attachments/assets/041e3091-71e5-4aa1-9170-ee20177485ef)
 
-If we get to 100 stars I'll add even more features 😊.
+If we get to 100 stars I'll add another feature 😊.
 
+## mcp-webcam
 
-# mcp-webcam
+MCP Server that provides access to your WebCam. Provides `capture` and `screenshot` tools to take an image from the Webcam, or take a screenshot. The current image is also available as a Resource.
 
-Use your Webcam to send live images to Claude Desktop (or other MCP Client).  
+### MCP Sampling
 
-Provides `"capture"` and `"screenshot"` tools to allow Claude to take a frame from the webcam or initiate taking a screenshot.
+`mcp-webcam` supports "sampling"! Press the "Sample" button to send a sampling request to the Client along with your entered message. 
 
-Provides a `current view from the webcam` resource too.
+> [!TIP]
+> Claude Desktop does not currently support Sampling. If you want a Client that can handle multi-modal sampling request, try https://github.com/evalstate/fast-agent/ or VSCode (more details below).
 
+## Installation and Running
 
-## Installation
+NPM Package is `@llmindset/mcp-webcam`. 
 
-NPM Package is `@llmindset/mcp-webcam`.
+To start in **STDIO** mode: `npx @llmindset/mcp-webcam`. This starts `mcp-webcam` on port 3333. Point your browser at `http://localhost:3333` to get started.
+To change the port: `npx @llmindset/mcp-webcam 9999`. This starts `mcp-webcam` on port 9999.
+For **Streaming HTTP** mode: `npx @llmindset/mcp-webcam --streaming`. This 
 
 Install a recent version of [NodeJS](https://nodejs.org/en/download) for your platform, then add the following to the `mcpServers` section of your `claude_desktop_config.json` file:
 
@@ -32,11 +37,7 @@ Install a recent version of [NodeJS](https://nodejs.org/en/download) for your pl
     }
 ```
 
-As long as you are using Claude Desktop 0.78 or greater, this will work on both Windows and MacOS.
-
 Takes a single argument to set the Port for the embedded Express server. 
-
-Default port is `3333` (to avoid conflict if using with Inspector).
 
 ## Usage
 
