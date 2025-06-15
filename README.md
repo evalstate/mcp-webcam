@@ -21,9 +21,13 @@ MCP Server that provides access to your WebCam. Provides `capture` and `screensh
 
 NPM Package is `@llmindset/mcp-webcam`. 
 
-To start in **STDIO** mode: `npx @llmindset/mcp-webcam`. This starts `mcp-webcam` on port 3333. Point your browser at `http://localhost:3333` to get started.
-To change the port: `npx @llmindset/mcp-webcam 9999`. This starts `mcp-webcam` on port 9999.
-For **Streaming HTTP** mode: `npx @llmindset/mcp-webcam --streaming`. This 
+To start in **STDIO** mode: `npx @llmindset/mcp-webcam`. This starts the `mcp-webcam` UI on port 3333. Point your browser at `http://localhost:3333` to get started.
+
+To change the port: `npx @llmindset/mcp-webcam 9999`. This starts `mcp-webcam` the UI on port 9999.
+
+For **Streaming HTTP** mode: `npx @llmindset/mcp-webcam --streaming`. This will make the UI available at `http://localhost:3333` and the MCP Server available at `http://localhost:3333/mcp`.
+
+
 
 Install a recent version of [NodeJS](https://nodejs.org/en/download) for your platform, then add the following to the `mcpServers` section of your `claude_desktop_config.json` file:
 
