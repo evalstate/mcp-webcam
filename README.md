@@ -1,3 +1,12 @@
+# mcp-webcam 0.2.0 - the 50 Star Update
+
+In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!!
+
+![mcp_webcam_020_small](https://github.com/user-attachments/assets/515d25b2-0f95-40e0-88e8-07ba9fb2c5ff)
+
+If we get to 100 stars I'll add even more features 😊.
+
+
 # mcp-webcam
 
 Use your Webcam to send live images to Claude Desktop (or other MCP Client).  
