@@ -8,6 +8,13 @@ In streamable-http mode multiple clients can connect simultaneously, and you can
 
 If we get to 100 stars I'll add another feature 😊.
 
+## Multi-user Mode
+
+When run in Streaming mode, if you set an MCP_HOST environment variable the host name is used as a prefix in URL construction, and 5 character UserIDs are automatically generated when the User lands on the webpage. 
+
+![image](https://github.com/user-attachments/assets/30d06cc2-59b6-485b-989d-7030b39c287d)
+
+
 ## mcp-webcam
 
 MCP Server that provides access to your WebCam. Provides `capture` and `screenshot` tools to take an image from the Webcam, or take a screenshot. The current image is also available as a Resource.
