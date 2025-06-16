@@ -30,7 +30,28 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 }
 
 function getPort(): number {
-  return process.env.PORT ? parseInt(process.env.PORT) : 3333;
+  // Check command line argument first (from process.argv)
+  const args = process.argv.slice(2);
+  const portArgIndex = args.findIndex(arg => arg === '-p' || arg === '--port');
+  if (portArgIndex !== -1 && portArgIndex + 1 < args.length) {
+    const portValue = parseInt(args[portArgIndex + 1]);
+    if (!isNaN(portValue)) {
+      return portValue;
+    }
+  }
+  
+  // Check positional argument for backward compatibility
+  const lastArg = args[args.length - 1];
+  if (lastArg && !lastArg.startsWith('-') && !isNaN(Number(lastArg))) {
+    return Number(lastArg);
+  }
+  
+  // Check environment variable
+  if (process.env.PORT) {
+    return parseInt(process.env.PORT);
+  }
+  
+  return 3333;
 }
 
 function getMcpHost(): string {
@@ -91,7 +112,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
     const userClients = getUserClients(user);
     if (userClients.size === 0) {
       throw new Error(
-        `No clients connected for user '${user}'. Please visit ${getMcpHost()}?user=${user} and enable your Webcam.`
+        `No clients connected for user '${user}'. Please visit ${getMcpHost()}${user !== 'default' ? `?user=${user}` : ''} and enable your Webcam.`
       );
     }
 
@@ -154,7 +175,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
           content: [
             {
               type: "text",
-              text: `Have you opened your web browser?. Direct the human to go to ${getMcpHost()}?user=${user}, switch on their webcam and try again.`,
+              text: `Have you opened your web browser?. Direct the human to go to ${getMcpHost()}${user !== 'default' ? `?user=${user}` : ''}, switch on their webcam and try again.`,
             },
           ],
         };

@@ -567,12 +567,12 @@ export function WebcamCapture() {
                   <Link2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
                   <span className="text-sm font-medium flex-shrink-0">MCP URL:</span>
                   <code className="text-xs font-mono bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded border select-all truncate flex-1 text-slate-700 dark:text-slate-300">
-                    {config?.mcpHost || window.location.origin}/mcp?user={userParam}
+                    {config?.mcpHost || window.location.origin}/mcp{config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}
                   </code>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => copyToClipboard(`${config?.mcpHost || window.location.origin}/mcp?user=${userParam}`)}
+                    onClick={() => copyToClipboard(`${config?.mcpHost || window.location.origin}/mcp${config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}`)}
                     className="h-7 px-2 flex-shrink-0"
                   >
                     {copied ? (
