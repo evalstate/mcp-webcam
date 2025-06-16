@@ -41,7 +41,8 @@ docker run -p 3333:3333 ghcr.io/evalstate/mcp-webcam:latest
 
 - `MCP_TRANSPORT_MODE` - Set to `stdio` for STDIO mode, defaults to `streaming`
 - `PORT` - The port to run on (default: `3333`)
-- `HOSTNAME` - The hostname/IP to bind to (default: `localhost`)
+- `BIND_HOST` - Network interface to bind the server to (default: `localhost`, use `0.0.0.0` for Docker containers)
+- `MCP_HOST` - Public-facing URL for user instructions and MCP client connections (default: `http://localhost:3333`)
 
 #### Examples
 
@@ -52,11 +53,14 @@ docker run -p 3333:3333 -e MCP_TRANSPORT_MODE=stdio ghcr.io/evalstate/mcp-webcam
 # Custom port
 docker run -p 8080:8080 -e PORT=8080 ghcr.io/evalstate/mcp-webcam:latest
 
-# Bind to all interfaces (useful for Docker/cloud deployments)
-docker run -p 3333:3333 -e HOSTNAME=0.0.0.0 ghcr.io/evalstate/mcp-webcam:latest
+# For cloud deployments with custom domain (e.g., Hugging Face Spaces)
+docker run -p 3333:3333 -e MCP_HOST=https://evalstate-mcp-webcam.hf.space ghcr.io/evalstate/mcp-webcam:latest
 
-# Custom hostname and port
-docker run -p 8080:8080 -e HOSTNAME=0.0.0.0 -e PORT=8080 ghcr.io/evalstate/mcp-webcam:latest
+# Local development binding to all interfaces
+docker run -p 3333:3333 -e BIND_HOST=0.0.0.0 ghcr.io/evalstate/mcp-webcam:latest
+
+# Complete cloud deployment example
+docker run -p 3333:3333 -e BIND_HOST=0.0.0.0 -e MCP_HOST=https://your-domain.com ghcr.io/evalstate/mcp-webcam:latest
 ```
 
 ## Clients

@@ -35,7 +35,7 @@ RUN echo "=== Verifying build output ===" && \
 ENV NODE_ENV=production
 ENV PORT=3333
 ENV MCP_TRANSPORT_MODE=streaming
-ENV HOSTNAME=localhost
+ENV BIND_HOST=0.0.0.0
 
 # Expose port
 EXPOSE 3333

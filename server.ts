@@ -74,7 +74,8 @@ function getPort(): number {
 }
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : getPort();
-const HOSTNAME = process.env.HOSTNAME || 'localhost';
+const BIND_HOST = process.env.BIND_HOST || 'localhost';
+const MCP_HOST = process.env.MCP_HOST || `http://localhost:${PORT}`;
 
 // Important: Serve the dist directory directly
 app.use(express.static(__dirname));
@@ -84,16 +85,26 @@ app.get("/api/health", (_, res) => {
   res.json({ status: "ok" });
 });
 
+// Configuration endpoint
+app.get("/api/config", (_, res) => {
+  res.json({ 
+    mcpHostConfigured: !!process.env.MCP_HOST,
+    mcpHost: MCP_HOST
+  });
+});
+
 // Get active sessions
 app.get("/api/sessions", (req, res) => {
   const user = (req.query.user as string) || 'default';
+  const showAll = req.query.all === 'true';
+  
   if (!transport) {
     res.json({ sessions: [] });
     return;
   }
   
   const sessions = transport.getSessions()
-    .filter((session) => (session.user || 'default') === user)
+    .filter((session) => showAll || (session.user || 'default') === user)
     .map((session) => {
       const now = Date.now();
       const lastActivityMs = session.lastActivity.getTime();
@@ -329,10 +340,10 @@ async function main() {
     });
 
     // Now start the Express server
-    app.listen(PORT, HOSTNAME, () => {
-      console.error(`Server running at http://${HOSTNAME}:${PORT}`);
+    app.listen(PORT, BIND_HOST, () => {
+      console.error(`Server running at ${MCP_HOST}`);
       console.error(
-        `MCP endpoint: POST/GET/DELETE http://${HOSTNAME}:${PORT}/mcp`
+        `MCP endpoint: POST/GET/DELETE ${MCP_HOST}/mcp`
       );
     });
 
@@ -352,8 +363,8 @@ async function main() {
     console.error("Starting in STDIO mode");
 
     // Start the Express server for the web UI even in stdio mode
-    app.listen(PORT, HOSTNAME, () => {
-      console.error(`Web UI running at http://${HOSTNAME}:${PORT}`);
+    app.listen(PORT, BIND_HOST, () => {
+      console.error(`Web UI running at ${MCP_HOST}`);
     });
 
     // Create and initialize STDIO transport

@@ -33,8 +33,8 @@ function getPort(): number {
   return process.env.PORT ? parseInt(process.env.PORT) : 3333;
 }
 
-function getHostname(): string {
-  return process.env.HOSTNAME || 'localhost';
+function getMcpHost(): string {
+  return process.env.MCP_HOST || `http://localhost:${getPort()}`;
 }
 
 // Helper functions for user-scoped client management
@@ -91,7 +91,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
     const userClients = getUserClients(user);
     if (userClients.size === 0) {
       throw new Error(
-        `No clients connected for user '${user}'. Please visit http://${getHostname()}:${getPort()}?user=${user} and enable your Webcam.`
+        `No clients connected for user '${user}'. Please visit ${getMcpHost()}?user=${user} and enable your Webcam.`
       );
     }
 
@@ -154,7 +154,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
           content: [
             {
               type: "text",
-              text: `Have you opened your web browser?. Direct the human to go to http://${getHostname()}:${getPort()}?user=${user}, switch on their webcam and try again.`,
+              text: `Have you opened your web browser?. Direct the human to go to ${getMcpHost()}?user=${user}, switch on their webcam and try again.`,
             },
           ],
         };
@@ -228,7 +228,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
           content: [
             {
               type: "text",
-              text: `Have you opened your web browser?. Direct the human to go to http://${getHostname()}:${getPort()}?user=${user}, switch on their webcam and try again.`,
+              text: `Have you opened your web browser?. Direct the human to go to ${getMcpHost()}?user=${user}, switch on their webcam and try again.`,
             },
           ],
         };
