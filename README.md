@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/evalstate-mcp-webcam-badge.png)](https://mseep.ai/app/evalstate-mcp-webcam)
+
 # ⭐⭐ mcp-webcam 0.2.0 - the 50 Star Update ⭐⭐ 
 
 In celebration of getting 52 GitHub stars, `mcp-webcam 0.2.0` is here! Now supports streamable-http!! No installation required! - try it now at [`https://evalstate-mcp-webcam.hf.space/`](https://evalstate-mcp-webcam.hf.space/). You can specify your own UserID by adding `?user=<YOUR_USER_ID>` after the URL. Note this shared instance is for fun, not security - see below for instructions how to run your own copy locally.
