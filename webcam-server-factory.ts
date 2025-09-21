@@ -5,6 +5,7 @@ import {
   InitializeRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ServerFactory } from "./transport/base-transport.js";
+import { Logger } from "./utils/logger.js";
 
 // Store clients with their resolve functions, grouped by user
 export let clients = new Map<string, Map<string, any>>(); // user -> clientId -> response
@@ -192,7 +193,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
       // Modified promise to handle both success and error cases
       const result = await new Promise<string | { error: string }>(
         (resolve) => {
-          console.error(`Capturing for ${clientId} (user: ${user})`);
+          Logger.info(`Capturing for ${clientId} (user: ${user}`);
           userCallbacks.set(clientId, resolve);
 
           userClients
@@ -266,7 +267,7 @@ export const createWebcamServer: ServerFactory = async (user: string = 'default'
       // Modified promise to handle both success and error cases
       const result = await new Promise<string | { error: string }>(
         (resolve) => {
-          console.error(`Taking screenshot for ${clientId} (user: ${user})`);
+          Logger.info(`Taking screenshot for ${clientId} (user: ${user}`);
           userCallbacks.set(clientId, resolve);
 
           userClients

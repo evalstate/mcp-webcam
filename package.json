@@ -1,12 +1,12 @@
 {
   "name": "@llmindset/mcp-webcam",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "bin": {
-    "mcp-webcam": "./dist/server.js"
+    "mcp-webcam": "dist/server.js"
   },
   "files": [
     "dist",

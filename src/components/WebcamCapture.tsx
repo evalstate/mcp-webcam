@@ -543,7 +543,7 @@ export function WebcamCapture() {
       {showBanner && (
         <>
           {/* Fixed position connection badge in top right corner */}
-          <div className="fixed top-4 right-4 z-50 flex items-center gap-1 bg-white dark:bg-slate-800 rounded-md border px-2 py-1 shadow-lg">
+          <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-50 flex items-center gap-1 bg-white dark:bg-slate-800 rounded-md border px-2 py-1 shadow-lg">
             <Users className="h-3 w-3 text-green-600" />
             <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
               {sessions.length}/{totalSessions}
@@ -552,8 +552,8 @@ export function WebcamCapture() {
 
           {/* Main banner content */}
           <div className="border-b bg-slate-50 dark:bg-slate-900/50">
-            <div className="w-full px-6 py-3">
-              <div className="flex items-center gap-6 flex-1 min-w-0">
+            <div className="w-full px-3 sm:px-6 py-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
                 <div className="flex items-center gap-2">
                   <Info className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">Connected as</span>
@@ -561,29 +561,33 @@ export function WebcamCapture() {
                     {userParam}
                   </Badge>
                 </div>
-                
-                {/* Inline MCP URL */}
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <Link2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                  <span className="text-sm font-medium flex-shrink-0">MCP URL:</span>
-                  <code className="text-xs font-mono bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded border select-all truncate flex-1 text-slate-700 dark:text-slate-300">
-                    {config?.mcpHost || window.location.origin}/mcp{config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(`${config?.mcpHost || window.location.origin}/mcp${config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}`)}
-                    className="h-7 px-2 flex-shrink-0"
-                  >
-                    {copied ? (
-                      <Check className="h-3 w-3" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </Button>
+
+                {/* MCP URL - stacks on mobile */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2 min-w-0 sm:flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-sm font-medium flex-shrink-0">MCP URL:</span>
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <code className="text-xs font-mono bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded border select-all truncate flex-1 text-slate-700 dark:text-slate-300">
+                      {config?.mcpHost || window.location.origin}/mcp{config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(`${config?.mcpHost || window.location.origin}/mcp${config?.mcpHostConfigured && userParam !== 'default' ? `?user=${userParam}` : ''}`)}
+                      className="h-7 px-2 flex-shrink-0"
+                    >
+                      {copied ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
-              
+
               {/* Helper text */}
               <div className="mt-2 text-xs text-muted-foreground">
                 Add <code className="bg-muted px-1 py-0.5 rounded font-mono text-xs">?user=YOUR_ID</code> to change user
@@ -592,24 +596,24 @@ export function WebcamCapture() {
           </div>
         </>
       )}
-      <Card className={`max-w-2xl mx-auto ${showBanner ? 'mt-4' : ''}`}>
+      <Card className={`w-full max-w-2xl mx-auto ${showBanner ? 'mt-4' : ''}`}>
         <CardHeader>
-          <div className="relative flex items-center">
+          <div className="relative">
             <a
               href="https://github.com/evalstate/mcp-webcam"
               target="_blank"
               rel="noopener noreferrer"
-              className="absolute left-0 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute left-0 top-0 flex items-center gap-2 text-xs sm:text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Github className="h-4 w-4" />
-              <span>github.com/evalstate</span>
+              <Github className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">github.com/evalstate</span>
             </a>
-            <CardTitle className="text-xl font-bold text-center w-full">
+            <CardTitle className="text-lg sm:text-xl font-bold text-center pt-6 sm:pt-0">
               mcp-webcam
             </CardTitle>
           </div>
           <div className="w-full max-w-2xl mx-auto mt-4 space-y-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Camera selector */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Camera</label>
@@ -716,7 +720,7 @@ export function WebcamCapture() {
             )}
           </div>
         </CardHeader>
-        <CardContent className="px-6 pt-3 pb-6">
+        <CardContent className="px-3 sm:px-6 pt-3 pb-6">
           <div className="rounded-lg overflow-hidden border border-border relative">
             <Webcam
               ref={(webcam) => setWebcamInstance(webcam)}
@@ -758,7 +762,7 @@ export function WebcamCapture() {
                 </AlertDescription>
               </Alert>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 type="text"
                 value={samplingPrompt}
@@ -779,6 +783,7 @@ export function WebcamCapture() {
                     ? "Selected session does not support sampling"
                     : ""
                 }
+                className="w-full sm:w-auto"
               >
                 {isSampling ? "Sampling..." : "Sample"}
               </Button>
@@ -815,8 +820,8 @@ export function WebcamCapture() {
             </div>
 
             {/* Auto-update and Screen Capture controls */}
-            <div className="flex items-center justify-between mt-4">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="auto-update"
@@ -849,7 +854,7 @@ export function WebcamCapture() {
                   <span className="text-sm text-muted-foreground">seconds</span>
                 </div>
               </div>
-              <Button onClick={handleScreenCapture} variant="secondary">
+              <Button onClick={handleScreenCapture} variant="secondary" className="w-full sm:w-auto">
                 Test Screen Capture
               </Button>
             </div>

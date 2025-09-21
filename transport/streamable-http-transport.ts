@@ -3,6 +3,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { Logger } from '../utils/logger.js';
 
 interface StreamableHttpConnection extends BaseSession<StreamableHTTPServerTransport> {
   activeResponse?: Response;
@@ -17,7 +18,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
     this.startStaleConnectionCheck();
     this.startPingKeepAlive();
 
-    console.error('StreamableHTTP transport initialized', {
+    Logger.info('StreamableHTTP transport initialized', {
       heartbeatInterval: this.HEARTBEAT_INTERVAL,
       staleCheckInterval: this.STALE_CHECK_INTERVAL,
       staleTimeout: this.STALE_TIMEOUT,
@@ -75,7 +76,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
           break;
       }
     } catch (error) {
-      console.error(`Request handling error for ${method}:`, error);
+      Logger.error(`Request handling error for ${method}:`, error);
       if (!res.headersSent) {
         res.status(500).json({
           jsonrpc: "2.0",
@@ -184,7 +185,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
 
     const lastEventId = req.headers['last-event-id'];
     if (lastEventId) {
-      console.error(`Client attempting to resume with Last-Event-ID for session ${sessionId}: ${lastEventId}`);
+      Logger.debug(`Client attempting to resume with Last-Event-ID for session ${sessionId}: ${lastEventId}`);
     }
 
     // Store the active response for heartbeat monitoring
@@ -212,7 +213,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
       return;
     }
 
-    console.error(`Session termination requested for ${sessionId}`);
+    Logger.info(`Session termination requested for ${sessionId}`);
 
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -238,7 +239,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (sessionId: string) => {
-        console.error(`Session initialized with ID: ${sessionId}`);
+        Logger.info(`Session initialized with ID: ${sessionId}`);
 
         // Create session object and store it immediately
         const session: Session = {
@@ -261,14 +262,14 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
     transport.onclose = () => {
       const sessionId = transport.sessionId;
       if (sessionId && this.sessions.has(sessionId)) {
-        console.error(`Transport closed for session ${sessionId}, cleaning up`);
+        Logger.info(`Transport closed for session ${sessionId}, cleaning up`);
         void this.removeSession(sessionId);
       }
     };
 
     // Set up error tracking for server errors
     server.server.onerror = (error) => {
-      console.error(`StreamableHTTP server error for session ${transport.sessionId}:`, error);
+      Logger.error(`StreamableHTTP server error for session ${transport.sessionId}:`, error);
     };
 
     // Set up client info capture when initialized
@@ -286,6 +287,10 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
   }
 
   private async removeSession(sessionId: string): Promise<void> {
+    // Check if session exists to prevent duplicate cleanup
+    if (!this.sessions.has(sessionId)) {
+      return;
+    }
     await this.cleanupSession(sessionId);
   }
 
@@ -293,7 +298,7 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
    * Remove a stale session - implementation for StatefulTransport
    */
   protected async removeStaleSession(sessionId: string): Promise<void> {
-    console.error(`Removing stale session ${sessionId}`);
+    Logger.warn(`Removing stale session ${sessionId}`);
     await this.cleanupSession(sessionId);
   }
 
@@ -304,6 +309,6 @@ export class StreamableHttpTransport extends StatefulTransport<Session> {
     // Use base class cleanup method
     await this.cleanupAllSessions();
 
-    console.error('StreamableHTTP transport cleanup complete');
+    Logger.info('StreamableHTTP transport cleanup complete');
   }
 }

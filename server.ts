@@ -10,6 +10,7 @@ import { StreamableHttpTransport } from "./transport/streamable-http-transport.j
 import { createWebcamServer, clients, captureCallbacks, getUserClients, getUserCallbacks } from "./webcam-server-factory.js";
 import type { BaseTransport } from "./transport/base-transport.js";
 import type { CreateMessageResult } from "@modelcontextprotocol/sdk/types.js";
+import { Logger } from "./utils/logger.js";
 
 // Parse command line arguments
 const { values, positionals } = parseArgs({
@@ -134,7 +135,7 @@ app.get("/api/sessions", (req, res) => {
 
 app.get("/api/events", (req, res) => {
   const user = (req.query.user as string) || 'default';
-  console.error(`New SSE connection request for user: ${user}`);
+  Logger.info(`New SSE connection request for user: ${user}`);
 
   // SSE setup
   res.setHeader("Content-Type", "text/event-stream");
@@ -147,7 +148,7 @@ app.get("/api/events", (req, res) => {
   // Add this client to the user's connected clients
   const userClients = getUserClients(user);
   userClients.set(clientId, res);
-  console.error(`Client connected - DEBUG INFO: ${clientId} (user: ${user})`);
+  Logger.debug(`Client connected: ${clientId} (user: ${user}`);
 
   // Send initial connection message
   const connectMessage = JSON.stringify({ type: "connected", clientId });
@@ -156,7 +157,7 @@ app.get("/api/events", (req, res) => {
   // Remove client when they disconnect
   req.on("close", () => {
     userClients.delete(clientId);
-    console.error(`Client disconnected - DEBUG INFO: ${clientId} (user: ${user})`);
+    Logger.debug(`Client disconnected: ${clientId} (user: ${user}`);
   });
 });
 
@@ -255,10 +256,10 @@ async function processSamplingRequest(
       ],
       maxTokens: 1000, // Reasonable limit for the response
     });
-    console.error("GOT A RESPONSE " + JSON.stringify(result, null, 2));
+    Logger.debug("Sampling response received:", JSON.stringify(result, null, 2));
     return result;
   } catch (error) {
-    console.error("Error during sampling:", error);
+    Logger.error("Error during sampling:", error);
     throw error;
   }
 }
@@ -287,7 +288,7 @@ app.post(
           );
           selectedSessionId = sortedSessions[0]?.id;
         }
-        console.error(`Using session ${selectedSessionId} for sampling (user: ${user})`);
+        Logger.info(`Using session ${selectedSessionId} for sampling (user: ${user}`);
       }
 
       const result = await processSamplingRequest(
@@ -297,7 +298,7 @@ app.post(
       );
       res.json({ success: true, result });
     } catch (error) {
-      console.error("Sampling processing error:", error);
+      Logger.error("Sampling processing error:", error);
       res.status(500).json({
         error: error instanceof Error ? error.message : String(error),
         errorDetail: error instanceof Error ? error.stack : undefined,
@@ -324,7 +325,7 @@ function parseDataUrl(dataUrl: string): ParsedDataUrl {
 
 async function main() {
   if (isStreamingMode) {
-    console.error("Starting in streaming HTTP mode");
+    Logger.info("Starting in streaming HTTP mode");
 
     // Create streaming transport
     transport = TransportFactory.create('streamable-http', createWebcamServer, app);
@@ -341,15 +342,13 @@ async function main() {
 
     // Now start the Express server
     app.listen(PORT, BIND_HOST, () => {
-      console.error(`Server running at ${MCP_HOST}`);
-      console.error(
-        `MCP endpoint: POST/GET/DELETE ${MCP_HOST}/mcp`
-      );
+      Logger.info(`Server running at ${MCP_HOST}`);
+      Logger.info(`MCP endpoint: POST/GET/DELETE ${MCP_HOST}/mcp`);
     });
 
     // Handle graceful shutdown
     process.on("SIGINT", async () => {
-      console.error("\nShutting down server...");
+      Logger.info("Shutting down server...");
       
       if (transport) {
         transport.shutdown?.();
@@ -360,11 +359,11 @@ async function main() {
     });
   } else {
     // Standard stdio mode
-    console.error("Starting in STDIO mode");
+    Logger.info("Starting in STDIO mode");
 
     // Start the Express server for the web UI even in stdio mode
     app.listen(PORT, BIND_HOST, () => {
-      console.error(`Web UI running at ${MCP_HOST}`);
+      Logger.info(`Web UI running at ${MCP_HOST}`);
     });
 
     // Create and initialize STDIO transport
@@ -376,11 +375,11 @@ async function main() {
       transport.setupStdioHandlers();
     }
 
-    console.error("Server connected via stdio");
+    Logger.info("Server connected via stdio");
   }
 }
 
 main().catch((error) => {
-  console.error("Fatal error in main():", error);
+  Logger.error("Fatal error in main():", error);
   process.exit(1);
 });

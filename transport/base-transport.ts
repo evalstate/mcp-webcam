@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Express } from 'express';
+import { Logger } from '../utils/logger.js';
 
 /**
  * Factory function to create server instances
@@ -141,7 +142,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
           };
         }
 
-        console.error(
+        Logger.debug(
           `Client Initialization Request for session ${sessionId}:`,
           {
             clientInfo: session.metadata.clientInfo,
@@ -177,13 +178,13 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
         // This prevents the stale checker from removing this session
         this.updateSessionActivity(sessionId);
         session.metadata.pingFailures = 0;
-        console.error(`Ping succeeded for session ${sessionId}`);
+        Logger.debug(`Ping succeeded for session ${sessionId}`);
       })
       .catch((error: unknown) => {
         // FAILURE: Increment ping failure count
         session.metadata.pingFailures = (session.metadata.pingFailures || 0) + 1;
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Ping failed for session ${sessionId}:`, errorMessage, `(failures: ${session.metadata.pingFailures})`);
+        Logger.warn(`Ping failed for session ${sessionId}:`, errorMessage, `(failures: ${session.metadata.pingFailures}`);
       })
       .finally(() => {
         // Always remove from tracking set
@@ -196,7 +197,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
    */
   protected startPingKeepAlive(): void {
     if (!this.PING_ENABLED) {
-      console.error('Ping keep-alive disabled');
+      Logger.info('Ping keep-alive disabled');
       return;
     }
 
@@ -209,7 +210,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
       }
     }, this.PING_INTERVAL);
 
-    console.error(`Started ping keep-alive with interval ${this.PING_INTERVAL}ms`);
+    Logger.info(`Started ping keep-alive with interval ${this.PING_INTERVAL}ms`);
   }
 
   /**
@@ -221,7 +222,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
       this.pingInterval = undefined;
       // Clear any in-flight pings
       this.pingsInFlight.clear();
-      console.error('Stopped ping keep-alive');
+      Logger.info('Stopped ping keep-alive');
     }
   }
 
@@ -247,7 +248,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
       for (const sessionId of staleSessionIds) {
         const session = this.sessions.get(sessionId);
         if (session) {
-          console.error(
+          Logger.warn(
             `Removing stale session ${sessionId} (inactive for ${Math.round((now - session.metadata.lastActivity.getTime()) / 1000)}s)`
           );
           void this.removeStaleSession(sessionId);
@@ -255,7 +256,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
       }
     }, this.STALE_CHECK_INTERVAL);
 
-    console.error(`Started stale connection checker with ${this.STALE_CHECK_INTERVAL}ms interval, ${this.STALE_TIMEOUT}ms timeout`);
+    Logger.info(`Started stale connection checker with ${this.STALE_CHECK_INTERVAL}ms interval, ${this.STALE_TIMEOUT}ms timeout`);
   }
 
   /**
@@ -315,7 +316,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
 
     session.heartbeatInterval = setInterval(() => {
       if (response.destroyed || response.writableEnded) {
-        console.error(`Detected stale connection via heartbeat for session ${sessionId}`);
+        Logger.warn(`Detected stale connection via heartbeat for session ${sessionId}`);
         void this.removeStaleSession(sessionId);
       }
     }, this.HEARTBEAT_INTERVAL);
@@ -340,13 +341,13 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
     response: { on: (event: string, handler: (...args: unknown[]) => void) => void }
   ): void {
     response.on('close', () => {
-      console.error(`SSE connection closed by client for session ${sessionId}`);
+      Logger.info(`SSE connection closed by client for session ${sessionId}`);
       void this.removeStaleSession(sessionId);
     });
 
     response.on('error', (...args: unknown[]) => {
       const error = args[0] as Error;
-      console.error(`SSE connection error for session ${sessionId}:`, error);
+      Logger.error(`SSE connection error for session ${sessionId}:`, error);
       void this.removeStaleSession(sessionId);
     });
   }
@@ -360,31 +361,37 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
       const session = this.sessions.get(sessionId);
       if (!session) return;
 
-      console.error(`Cleaning up session ${sessionId}`);
+      Logger.debug(`Cleaning up session ${sessionId}`);
+
+      // Remove from map FIRST to prevent any re-entry
+      this.sessions.delete(sessionId);
 
       // Clear heartbeat interval
       this.stopHeartbeat(sessionId);
+
+      // Clear the onclose handler to prevent circular calls
+      const transport = session.transport as any;
+      if (transport && typeof transport.onclose !== 'undefined') {
+        transport.onclose = undefined;
+      }
 
       // Close transport
       try {
         await (session.transport as { close(): Promise<void> }).close();
       } catch (error) {
-        console.error(`Error closing transport for session ${sessionId}:`, error);
+        Logger.error(`Error closing transport for session ${sessionId}:`, error);
       }
 
       // Close server
       try {
         await session.server.close();
       } catch (error) {
-        console.error(`Error closing server for session ${sessionId}:`, error);
+        Logger.error(`Error closing server for session ${sessionId}:`, error);
       }
 
-      // Remove from map
-      this.sessions.delete(sessionId);
-
-      console.error(`Session ${sessionId} cleaned up`);
+      Logger.debug(`Session ${sessionId} cleaned up`);
     } catch (error) {
-      console.error(`Error during session cleanup for ${sessionId}:`, error);
+      Logger.error(`Error during session cleanup for ${sessionId}:`, error);
     }
   }
 
@@ -396,7 +403,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
 
     const cleanupPromises = sessionIds.map((sessionId) =>
       this.cleanupSession(sessionId).catch((error: unknown) => {
-        console.error(`Error during session cleanup for ${sessionId}:`, error);
+        Logger.error(`Error during session cleanup for ${sessionId}:`, error);
       })
     );
 
@@ -414,7 +421,7 @@ export abstract class StatefulTransport<TSession extends BaseSession = BaseSessi
 
     // Set up error tracking for server errors
     server.server.onerror = (error) => {
-      console.error(`Server error for session ${sessionId}:`, error);
+      Logger.error(`Server error for session ${sessionId}:`, error);
     };
   }
 }

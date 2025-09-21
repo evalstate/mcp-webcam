@@ -1,5 +1,6 @@
 import { StatefulTransport, type TransportOptions, type BaseSession } from './base-transport.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Logger } from '../utils/logger.js';
 
 type StdioSession = BaseSession<StdioServerTransport>;
 
@@ -43,19 +44,19 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
 
       // Set up error tracking
       server.server.onerror = (error) => {
-        console.error('STDIO server error:', error);
+        Logger.error('STDIO server error:', error);
       };
 
       // Handle transport closure
       transport.onclose = () => {
-        console.error('STDIO transport closed');
+        Logger.info('STDIO transport closed');
         void this.handleShutdown('transport closed');
       };
 
       await server.connect(transport);
-      console.error('STDIO transport initialized');
+      Logger.info('STDIO transport initialized');
     } catch (error) {
-      console.error('Error connecting STDIO transport:', error);
+      Logger.error('Error connecting STDIO transport:', error);
       // Clean up on error
       this.sessions.delete(this.SESSION_ID);
       throw error;
@@ -67,7 +68,7 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
    */
   protected removeStaleSession(sessionId: string): Promise<void> {
     // STDIO has only one session and it's not subject to staleness
-    console.error(`STDIO session staleness check for ${sessionId} (no-op)`);
+    Logger.debug(`STDIO session staleness check for ${sessionId} (no-op)`);
     return Promise.resolve();
   }
 
@@ -77,16 +78,16 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
       try {
         await session.transport.close();
       } catch (error) {
-        console.error('Error closing STDIO transport:', error);
+        Logger.error('Error closing STDIO transport:', error);
       }
       try {
         await session.server.close();
       } catch (error) {
-        console.error('Error closing STDIO server:', error);
+        Logger.error('Error closing STDIO server:', error);
       }
     }
     this.sessions.clear();
-    console.error('STDIO transport cleaned up');
+    Logger.info('STDIO transport cleaned up');
   }
 
   /**
@@ -100,13 +101,13 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
    * Handle shutdown for STDIO
    */
   private async handleShutdown(reason: string): Promise<void> {
-    console.error(`Initiating shutdown (reason: ${reason})`);
+    Logger.info(`Initiating shutdown (reason: ${reason}`);
     
     try {
       await this.cleanup();
       process.exit(0);
     } catch (error) {
-      console.error('Error during shutdown:', error);
+      Logger.error('Error during shutdown:', error);
       process.exit(1);
     }
   }
