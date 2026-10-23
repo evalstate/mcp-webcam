@@ -75,6 +75,10 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
   async cleanup(): Promise<void> {
     const session = this.sessions.get(this.SESSION_ID);
     if (session) {
+      // Clear the onclose handler to prevent circular shutdown calls
+      if (session.transport && typeof session.transport.onclose !== 'undefined') {
+        session.transport.onclose = undefined;
+      }
       try {
         await session.transport.close();
       } catch (error) {
@@ -101,8 +105,15 @@ export class StdioTransport extends StatefulTransport<StdioSession> {
    * Handle shutdown for STDIO
    */
   private async handleShutdown(reason: string): Promise<void> {
-    Logger.info(`Initiating shutdown (reason: ${reason}`);
-    
+    // Guard against re-entrant shutdown cascades: closing the transport
+    // fires onclose, which would otherwise trigger handleShutdown again.
+    if (this.isShuttingDown) {
+      Logger.debug(`Shutdown already in progress (ignoring trigger: ${reason})`);
+      return;
+    }
+    this.isShuttingDown = true;
+    Logger.info(`Initiating shutdown (reason: ${reason})`);
+
     try {
       await this.cleanup();
       process.exit(0);

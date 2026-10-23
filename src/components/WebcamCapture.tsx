@@ -119,6 +119,11 @@ export function WebcamCapture() {
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("default");
+  const [resolution, setResolution] = useState<string>("max");
+  const [maxResolution, setMaxResolution] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
 
   // New state for sampling results
@@ -143,31 +148,90 @@ export function WebcamCapture() {
   // Get the currently selected session
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
 
+  // Capture the live video frame at its native resolution.
+  // Builds a fresh canvas on every call so resolution changes
+  // (e.g. switching cameras) are always picked up.
+  const captureNativeFrame = useCallback((): string | null => {
+    const video: HTMLVideoElement | null =
+      webcamInstance?.video ?? document.querySelector("video");
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      return null;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return null;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.92);
+  }, [webcamInstance]);
+
   const getImage = useCallback(() => {
     console.log("getImage called, frozenFrame state:", frozenFrame);
     if (frozenFrame) {
       console.log("Using frozen frame");
       return frozenFrame;
     }
-    console.log("Getting live screenshot");
-    const screenshot = webcamInstance?.getScreenshot();
-    return screenshot || null;
-  }, [frozenFrame, webcamInstance]);
+    console.log("Capturing live frame at native resolution");
+    return captureNativeFrame();
+  }, [frozenFrame, captureNativeFrame]);
 
   const toggleFreeze = () => {
     console.log("toggleFreeze called, current frozenFrame:", frozenFrame);
     if (frozenFrame) {
       console.log("Unfreezing frame");
       setFrozenFrame(null);
-    } else if (webcamInstance) {
+    } else {
       console.log("Freezing new frame");
-      const screenshot = webcamInstance.getScreenshot();
+      const screenshot = captureNativeFrame();
       if (screenshot) {
         console.log("New frame captured successfully");
         setFrozenFrame(screenshot);
       }
     }
   };
+
+  // Detect the camera's maximum supported resolution from the live track.
+  // Polls briefly because the stream restarts asynchronously whenever
+  // the device or resolution constraints change. Falls back to the
+  // current track settings when getCapabilities() is unavailable.
+  useEffect(() => {
+    const detectMaxResolution = () => {
+      const video: HTMLVideoElement | null =
+        webcamInstance?.video ?? document.querySelector("video");
+      const stream = video?.srcObject as MediaStream | null;
+      const track = stream?.getVideoTracks?.()[0] ?? null;
+      if (!track) return;
+      let caps: MediaTrackCapabilities | null = null;
+      try {
+        caps =
+          typeof track.getCapabilities === "function"
+            ? track.getCapabilities()
+            : null;
+      } catch {
+        caps = null;
+      }
+      if (caps?.width?.max && caps?.height?.max) {
+        setMaxResolution({
+          width: caps.width.max,
+          height: caps.height.max,
+        });
+      } else {
+        const settings = track.getSettings();
+        if (settings.width && settings.height) {
+          setMaxResolution({
+            width: settings.width,
+            height: settings.height,
+          });
+        }
+      }
+    };
+    detectMaxResolution();
+    const interval = setInterval(detectMaxResolution, 2000);
+    return () => clearInterval(interval);
+  }, [webcamInstance]);
 
   const handleScreenCapture = async () => {
     console.log("Screen capture button clicked");
@@ -640,6 +704,32 @@ export function WebcamCapture() {
                 </Select>
               </div>
 
+              {/* Resolution selector */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Resolution
+                  {maxResolution && (
+                    <span className="ml-2 font-normal text-muted-foreground">
+                      (max {maxResolution.width}×{maxResolution.height})
+                    </span>
+                  )}
+                </label>
+                <Select value={resolution} onValueChange={setResolution}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select resolution" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="max">
+                      Auto (camera maximum)
+                    </SelectItem>
+                    <SelectItem value="1920x1080">1920 × 1080 (FHD)</SelectItem>
+                    <SelectItem value="1280x720">1280 × 720 (HD)</SelectItem>
+                    <SelectItem value="960x540">960 × 540</SelectItem>
+                    <SelectItem value="640x480">640 × 480 (VGA)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Session selector - always visible */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">
@@ -727,8 +817,12 @@ export function WebcamCapture() {
               screenshotFormat="image/jpeg"
               className="w-full"
               videoConstraints={{
-                width: 1280,
-                height: 720,
+                ...(resolution === "max"
+                  ? { width: { ideal: 4096 }, height: { ideal: 2160 } }
+                  : {
+                      width: { ideal: parseInt(resolution.split("x")[0], 10) },
+                      height: { ideal: parseInt(resolution.split("x")[1], 10) },
+                    }),
                 ...(selectedDevice !== "default"
                   ? { deviceId: selectedDevice }
                   : { facingMode: "user" }),
